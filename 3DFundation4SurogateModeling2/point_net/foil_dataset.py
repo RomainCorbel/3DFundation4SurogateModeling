@@ -65,8 +65,8 @@ def tensor_to_numpy(t):
         return None
     return t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t)
 
-
-'''def convert_to_shapenet_like(
+    '''
+def convert_to_shapenet_like(
     npoints: int = 100,
     path_in: str = DEFAULT_PATH_IN,
     root_out: str = "shapenet_like_out",
@@ -137,7 +137,8 @@ def tensor_to_numpy(t):
             xyz = np.concatenate([xy, np.zeros((len(xy), 1), dtype=xy.dtype)], axis=1)
             seg = np.zeros((len(xy),), dtype=np.int64)
 
-            raw_token = osp.splitext(osp.basename(src))[0]
+            # raw_token = osp.splitext(osp.basename(src))[0] # PROBLEME: CA ENLEVAIT LA DECIMAL DU DERNIER CHIFFRE. HERE IS THE ISSUE
+            raw_token = osp.basename(src.rstrip("/\\"))
             token = raw_token
             k = 1
             while osp.exists(osp.join(points_dir, f"{token}.pts")):
@@ -245,7 +246,8 @@ def convert_to_shapenet_like(
             xyz = np.concatenate([xy, np.zeros((len(xy), 1), dtype=xy.dtype)], axis=1)
             seg = np.zeros((len(xy),), dtype=np.int64)
 
-            raw_token = osp.splitext(osp.basename(src))[0]
+            # raw_token = osp.splitext(osp.basename(src))[0]
+            raw_token = osp.basename(src.rstrip("/\\"))
             token = raw_token
             k = 1
             while osp.exists(osp.join(points_dir, f"{token}.pts")):
