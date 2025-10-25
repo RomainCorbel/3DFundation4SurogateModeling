@@ -356,5 +356,4 @@ def Dataset(
         for data in dataset:
             data.x = (data.x - mi) / (si + 1e-8)
             data.y = (data.y - mo) / (so + 1e-8)
-
     return dataset

@@ -166,4 +166,32 @@
   },
   "train_loss": 0.06123414263129234,
   "val_loss": 0.10260128280235221
+}{
+  "task": "pressure_surface_only",
+  "loss": "MSE",
+  "nb_parameters": 19793.0,
+  "time_elapsed": 6.730010986328125,
+  "hparams": {
+    "encoder": [
+      7,
+      64,
+      64,
+      8
+    ],
+    "decoder": [
+      8,
+      64,
+      64,
+      1
+    ],
+    "nb_hidden_layers": 3,
+    "size_hidden_layers": 64,
+    "batch_size": 1,
+    "nb_epochs": 10,
+    "lr": 0.001,
+    "bn_bool": true,
+    "subsampling": 32000
+  },
+  "train_loss": 0.08336745202541351,
+  "val_loss": 0.07606114165042525
 }

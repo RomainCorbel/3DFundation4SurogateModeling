@@ -29,11 +29,20 @@ val_dataset = manifest_train[-n:]
 #     coef_norm = torch.load('Dataset/normalization')
 # else:
 train_dataset, coef_norm = Dataset(train_dataset, norm = True)
-print(train_dataset)
-# torch.save(train_dataset, 'Dataset/train_dataset')
-# torch.save(coef_norm, 'Dataset/normalization')
-val_dataset = Dataset(val_dataset, coef_norm = coef_norm)
-# torch.save(val_dataset, 'Dataset/val_dataset')
+
+save_dir = 'save_dataset'   # or 'datasets_cache' if you prefer
+os.makedirs(save_dir, exist_ok=True)
+
+torch.save(train_dataset, osp.join(save_dir, 'train_dataset'))
+torch.save(coef_norm,     osp.join(save_dir, 'normalization'))
+
+val_dataset = Dataset(val_dataset, coef_norm=coef_norm)
+torch.save(val_dataset,  osp.join(save_dir, 'val_dataset'))
+
+print(f"[SAVE] Train -> {osp.abspath(osp.join(save_dir,'train_dataset'))}")
+print(f"[SAVE] Val   -> {osp.abspath(osp.join(save_dir,'val_dataset'))}")
+print(f"[SAVE] Norm  -> {osp.abspath(osp.join(save_dir,'normalization'))}")
+
 
 # Cuda
 use_cuda = torch.cuda.is_available()
