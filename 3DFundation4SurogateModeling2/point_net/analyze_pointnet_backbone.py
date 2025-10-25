@@ -104,6 +104,44 @@ def analyze_pointnet_backbone(
     y = np.concatenate(all_labels)    # (num_samples,)
     n_samples = X.shape[0]
     print(f"[{model_name}] Collected features: X={X.shape}, labels={y.shape}")
+    
+    # HERE ADD THE CODE TO SAVE THE FEATURES
+    
+    save_dir = osp.join(os.getcwd(), "extracted_features", model_name)
+    os.makedirs(save_dir, exist_ok=True)
+    out_csv  = osp.join(save_dir, f"{model_name}_features.csv")
+    out_parq = osp.join(save_dir, f"{model_name}_features.parquet")
+
+    # Collect foil names from dataset (assumes DataLoader shuffle=False)
+    if hasattr(test_dataset, "datapath"):
+        foil_names = [
+            osp.splitext(osp.basename(seg_path))[0]  # remove .seg extension
+            for *_, seg_path, _ in test_dataset.datapath
+        ]
+    else:
+        foil_names = [f"sample_{i:04d}" for i in range(X.shape[0])]
+
+    # Align everything safely
+    nrows = min(len(foil_names), X.shape[0], y.shape[0])
+    foil_names = foil_names[:nrows]
+    X = X[:nrows]
+    y = y[:nrows]
+
+    # Build DataFrame: foil_name, label, feat_0000..feat_1023
+    feat_cols = [f"feat_{i:04d}" for i in range(X.shape[1])]
+    df = pd.DataFrame(X, columns=feat_cols)
+    df.insert(0, "foil_name", foil_names)
+    df.insert(1, "label", y.astype(int))
+
+    # Save to disk
+    df.to_csv(out_csv, index=False)
+    try:
+        df.to_parquet(out_parq, index=False)
+    except Exception as e:
+        print(f"[{model_name}] Parquet save skipped ({e}).")
+
+    print(f"[{model_name}] Saved extracted features to:\n  - {out_csv}\n  - {out_parq if osp.exists(out_parq) else '(parquet not written)'}")
+    # 
     if plots:
         ## ------------------------------------------------------------------------------- t-SNE embedding
         tsne = TSNE(

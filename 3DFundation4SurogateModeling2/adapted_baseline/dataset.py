@@ -7,298 +7,354 @@ import torch
 from torch_geometric.data import Data
 
 from tqdm import tqdm
+import os
+import os.path as osp
+import numpy as np
+import pyvista as pv
+import torch
+from torch_geometric.data import Data
+from tqdm import tqdm
 
-def cell_sampling_2d(cell_points, cell_attr = None):
-    '''
-    Sample points in a two dimensional cell via parallelogram sampling and triangle interpolation via barycentric coordinates. The vertices have to be ordered in a certain way.
 
-    Args:
-        cell_points (array): Vertices of the 2 dimensional cells. Shape (N, 4) for N cells with 4 vertices.
-        cell_attr (array, optional): Features of the vertices of the 2 dimensional cells. Shape (N, 4, k) for N cells with 4 edges and k features. 
-            If given shape (N, 4) it will resize it automatically in a (N, 4, 1) array. Default: ``None``
-    '''
-    # Sampling via triangulation of the cell and parallelogram sampling
-    v0, v1 = cell_points[:, 1] - cell_points[:, 0], cell_points[:, 3] - cell_points[:, 0]
-    v2, v3 = cell_points[:, 3] - cell_points[:, 2], cell_points[:, 1] - cell_points[:, 2]  
-    a0, a1 = np.abs(np.linalg.det(np.hstack([v0[:, :2], v1[:, :2]]).reshape(-1, 2, 2))), np.abs(np.linalg.det(np.hstack([v2[:, :2], v3[:, :2]]).reshape(-1, 2, 2)))
-    p = a0/(a0 + a1)
-    index_triangle = np.random.binomial(1, p)[:, None]
-    u = np.random.uniform(size = (len(p), 2))
-    sampled_point = index_triangle*(u[:, 0:1]*v0 + u[:, 1:2]*v1) + (1 - index_triangle)*(u[:, 0:1]*v2 + u[:, 1:2]*v3)
-    sampled_point_mirror = index_triangle*((1 - u[:, 0:1])*v0 + (1 - u[:, 1:2])*v1) + (1 - index_triangle)*((1 - u[:, 0:1])*v2 + (1 - u[:, 1:2])*v3)
-    reflex = (u.sum(axis = 1) > 1)
-    sampled_point[reflex] = sampled_point_mirror[reflex]
 
-    # Interpolation on a triangle via barycentric coordinates
-    if cell_attr is not None:
-        t0, t1, t2 = np.zeros_like(v0), index_triangle*v0 + (1 - index_triangle)*v2, index_triangle*v1 + (1 - index_triangle)*v3
-        w = (t1[:, 1] - t2[:, 1])*(t0[:, 0] - t2[:, 0]) + (t2[:, 0] - t1[:, 0])*(t0[:, 1] - t2[:, 1])
-        w0 = (t1[:, 1] - t2[:, 1])*(sampled_point[:, 0] - t2[:, 0]) + (t2[:, 0] - t1[:, 0])*(sampled_point[:, 1] - t2[:, 1])
-        w1 = (t2[:, 1] - t0[:, 1])*(sampled_point[:, 0] - t2[:, 0]) + (t0[:, 0] - t2[:, 0])*(sampled_point[:, 1] - t2[:, 1])
-        w0, w1 = w0/w, w1/w
-        w2 = 1 - w0 - w1
-        
-        if len(cell_attr.shape) == 2:
-            cell_attr = cell_attr[:, :, None]
-        attr0 = index_triangle*cell_attr[:, 0] + (1 - index_triangle)*cell_attr[:, 2]
-        attr1 = index_triangle*cell_attr[:, 1] + (1 - index_triangle)*cell_attr[:, 1]
-        attr2 = index_triangle*cell_attr[:, 3] + (1 - index_triangle)*cell_attr[:, 3]
-        sampled_attr = w0[:, None]*attr0 + w1[:, None]*attr1 + w2[:, None]*attr2
 
-    sampled_point += index_triangle*cell_points[:, 0] + (1 - index_triangle)*cell_points[:, 2]    
 
-    return np.hstack([sampled_point[:, :2], sampled_attr]) if cell_attr is not None else sampled_point[:, :2]
+# ---------------------------------------------------------------------
+# --- Sampling utilities
+# ---------------------------------------------------------------------
+def _sample_surface_points(aerofoil, n_points):
+    """
+    Uniformly sample N points on the airfoil polyline (by edge length).
+    Returns:
+        surf_pos : (N, 2) XY coordinates
+        idx_edges: (N,)  indices of sampled edges
+        u        : (N, 1) linear interpolation factor
+    """
+    lines = aerofoil.lines.reshape(-1, 3)[:, 1:]  # (E, 2) node indices per edge
+    pts = aerofoil.points                        # (P, 3)
 
-def cell_sampling_1d(line_points, line_attr = None):
-    '''
-    Sample points in a one dimensional cell via linear sampling and interpolation.
+    # Edge lengths & probabilities
+    seg = pts[lines]
+    lengths = np.linalg.norm(seg[:, 1, :2] - seg[:, 0, :2], axis=1) + 1e-12
+    p = lengths / lengths.sum()
 
-    Args:
-        line_points (array): Edges of the 1 dimensional cells. Shape (N, 2) for N cells with 2 edges.
-        line_attr (array, optional): Features of the edges of the 1 dimensional cells. Shape (N, 2, k) for N cells with 2 edges and k features.
-            If given shape (N, 2) it will resize it automatically in a (N, 2, 1) array. Default: ``None``
-    '''
-    # Linear sampling
-    u = np.random.uniform(size = (len(line_points), 1))
-    sampled_point = u*line_points[:, 0] + (1 - u)*line_points[:, 1]
+    idx_edges = np.random.choice(len(lines), size=n_points, p=p)
+    u = np.random.uniform(size=(n_points, 1))
 
-    # Linear interpolation
-    if line_attr is not None:   
-        if len(line_attr.shape) == 2:
-            line_attr = line_attr[:, :, None]
-        sampled_attr = u*line_attr[:, 0] + (1 - u)*line_attr[:, 1]
+    a = pts[lines[idx_edges, 0]][:, :2]
+    b = pts[lines[idx_edges, 1]][:, :2]
+    surf_pos = u * a + (1.0 - u) * b
+    return surf_pos, idx_edges, u
 
-    return np.hstack([sampled_point[:, :2], sampled_attr]) if line_attr is not None else sampled_point[:, :2]
 
-# def Dataset(set, norm = False, coef_norm = None, crop = None, sample = None, n_boot = int(5e5), surf_ratio = .1):
-def Dataset(set, norm = False, coef_norm = None, crop = None, sample = 'uniform', n_boot = int(100), surf_ratio = 1):
-    '''
-    Create a list of simulation to input in a PyTorch Geometric DataLoader. Simulation are transformed by keeping vertices of the CFD mesh or 
-    by sampling (uniformly or via the mesh density) points in the simulation cells.
+# ---------------------------------------------------------------------
+# --- Surface-level feature construction
+# ---------------------------------------------------------------------
+def _compute_surface_io(aerofoil, internal, case_name, n_points):
+    """
+    Builds surface-only inputs X [N,7] and targets y [N,1] for a foil case.
+    X = [x, y, U∞_x, U∞_y, 0, n_x, n_y]
+    y = wall pressure (p)
+    """
+    parts = case_name.split('_')
+    Uinf = float(parts[2])
+    alpha = float(parts[3]) * np.pi / 180.0
+    Uinf_vec = np.array([np.cos(alpha), np.sin(alpha)], dtype=np.float32) * Uinf
 
-    Args:
-        set (list): List of geometry names to include in the dataset.
-        norm (bool, optional): If norm is set to ``True``, the mean and the standard deviation of the dataset will be computed and returned. 
-            Moreover, the dataset will be normalized by these quantities. Ignored when ``coef_norm`` is not None. Default: ``False``
-        coef_norm (tuple, optional): This has to be a tuple of the form (mean input, std input, mean output, std ouput) if not None. 
-            The dataset generated will be normalized by those quantites. Default: ``None``
-        crop (list, optional): List of the vertices of the rectangular [xmin, xmax, ymin, ymax] box to crop simulations. Default: ``None``
-        sample (string, optional): Type of sampling. If ``None``, no sampling strategy is applied and the nodes of the CFD mesh are returned.
-            If ``uniform`` or ``mesh`` is chosen, uniform or mesh density sampling is applied on the domain. Default: ``None``
-        n_boot (int, optional): Used only if sample is not None, gives the size of the sampling for each simulation. Defaul: ``int(5e5)``
-        surf_ratio (float, optional): Used only if sample is not None, gives the ratio of point over the airfoil to sample with respect to point
-            in the volume. Default: ``0.1``
-    '''
+    # Sample points on airfoil
+    surf_pos, idx_edges, u = _sample_surface_points(aerofoil, n_points)
+    lines = aerofoil.lines.reshape(-1, 3)[:, 1:]
+
+    # Interpolate normals & pressure
+    n0 = -aerofoil.point_data['Normals'][lines[idx_edges, 0], :2]
+    n1 = -aerofoil.point_data['Normals'][lines[idx_edges, 1], :2]
+    nxny = u * n0 + (1.0 - u) * n1
+
+    p0 = aerofoil.point_data['p'][lines[idx_edges, 0]]
+    p1 = aerofoil.point_data['p'][lines[idx_edges, 1]]
+    p = (u[:, 0] * p0 + (1.0 - u[:, 0]) * p1).astype(np.float32)
+
+    # Build X
+    N = surf_pos.shape[0]
+    X = np.zeros((N, 7), dtype=np.float32)
+    X[:, 0:2] = surf_pos
+    X[:, 2:4] = Uinf_vec[None, :]
+    X[:, 4] = 0.0  # distance to wall
+    X[:, 5:7] = nxny
+
+    # Target y = pressure
+    y = p.reshape(-1, 1)
+
+    # Torch tensors
+    pos = torch.tensor(surf_pos, dtype=torch.float32)
+    x = torch.tensor(X, dtype=torch.float32)
+    y = torch.tensor(y, dtype=torch.float32)
+    surf_mask = torch.ones(N, dtype=torch.bool)
+
+    return pos, x, y, surf_mask
+
+
+# ---------------------------------------------------------------------
+# --- Optional: load or compute 1024-d global descriptor
+# ---------------------------------------------------------------------
+def _load_global_parquet(parquet_path: str) -> dict[str, np.ndarray]:
+    """
+    Lit un Parquet où CHAQUE LIGNE = 1 foil :
+      - première colonne = nom du foil
+      - 1024 colonnes suivantes = features globales
+    Retourne: dict { foil_name -> np.ndarray shape (1024,) }
+    """
+    import pandas as pd
+    import numpy as np
+
+    df = pd.read_parquet(parquet_path)
+
+    # Heuristique pour trouver la colonne "nom du foil"
+    # 1) si la première colonne ressemble à des strings -> on la prend
+    # 2) sinon, chercher une colonne nommée explicitement
+    name_col = df.columns[0]
+    if not pd.api.types.is_string_dtype(df[name_col]):
+        for cand in ("foil", "name", "id", "case", "airfoil", "filename"):
+            if cand in df.columns and pd.api.types.is_string_dtype(df[cand]):
+                name_col = cand
+                break
+
+    # Colonnes de features = toutes les colonnes sauf celle du nom.
+    feat_cols = [c for c in df.columns if c != name_col]
+
+    # On s'assure qu'on a au moins 1024 colonnes de features
+    if len(feat_cols) < 1024:
+        raise ValueError(
+            f"Le Parquet doit contenir au moins 1024 colonnes de features; "
+            f"trouvé {len(feat_cols)}."
+        )
+    # Si plus de 1024 colonnes, on garde les 1024 premières après la colonne nom.
+    feat_cols = feat_cols[:1024]
+
+    G = {}
+    for _, row in df.iterrows():
+        foil_name = str(row[name_col]).strip()
+        feats = row[feat_cols].to_numpy(dtype=np.float32)
+        if feats.shape[0] != 1024:
+            raise ValueError(f"{foil_name}: features de taille {feats.shape[0]}, attendu 1024.")
+        G[foil_name] = feats
+    return G
+
+# ---------------------------------------------------------------------
+# --- Main dataset builder
+# ---------------------------------------------------------------------
+'''def Dataset(
+    set,
+    *,
+    norm: bool = False,
+    coef_norm=None,
+    sample = 'uniform',
+    surf_ratio = 1,
+    n_surface_points: int = 10,
+    global_features_parquet: str | None = None,
+):
+    """
+    Builds list of torch_geometric Data objects for training.
+    Each Data includes:
+        - x: [N,7] local inputs
+        - y: [N,1] wall pressure
+        - pos: [N,2] coordinates
+        - surf: mask (all True)
+        - g: [1024] optional global descriptor (if global_model_path provided)
+    """
     if norm and coef_norm is not None:
-        raise ValueError('If coef_norm is not None and norm is True, the normalization will be done via coef_norm')
+        raise ValueError('Provide either norm=True or coef_norm, not both.')
 
     dataset = []
 
+    # Accumulators for normalization
+    if norm and coef_norm is None:
+        old_length = 0
+        mean_in = None
+        mean_out = None
+
     for k, s in enumerate(tqdm(set)):
-        # Get the 3D mesh, add the signed distance function and slice it to return in 2D
-        internal = pv.read(osp.join('Dataset', s, s + '_internal.vtu'))
-        aerofoil = pv.read(osp.join('Dataset', s, s + '_aerofoil.vtp'))
-        internal = internal.compute_cell_sizes(length = False, volume = False)
-        
-        # Cropping if needed, crinkle is True.
-        if crop is not None:
-            bounds = (crop[0], crop[1], crop[2], crop[3], 0, 1)
-            internal = internal.clip_box(bounds = bounds, invert = False, crinkle = True)
+        internal = pv.read(osp.join('..', 'Dataset', s, s + '_internal.vtu'))
+        aerofoil = pv.read(osp.join('..', 'Dataset', s, s + '_aerofoil.vtp'))
 
-        # If sampling strategy is chosen, it will sample points in the cells of the simulation instead of directly taking the nodes of the mesh.
-        if sample is not None:
-            # Sample on a new point cloud
-            if sample == 'uniform': # Uniform sampling strategy
-                p = internal.cell_data['Area']/internal.cell_data['Area'].sum()
-                sampled_cell_indices = np.random.choice(internal.n_cells, size = n_boot, p = p)
-                surf_p = aerofoil.cell_data['Length']/aerofoil.cell_data['Length'].sum()
-                sampled_line_indices = np.random.choice(aerofoil.n_cells, size = int(n_boot*surf_ratio), p = surf_p)
-            elif sample == 'mesh': # Sample via mesh density
-                sampled_cell_indices = np.random.choice(internal.n_cells, size = n_boot)
-                sampled_line_indices = np.random.choice(aerofoil.n_cells, size = int(n_boot*surf_ratio))
+        # Per-foil local dataset
+        pos, x, y, surf = _compute_surface_io(aerofoil, internal, s, n_surface_points)
 
-            cell_dict = internal.cells.reshape(-1, 5)[sampled_cell_indices, 1:]
-            cell_points = internal.points[cell_dict]            
-            line_dict = aerofoil.lines.reshape(-1, 3)[sampled_line_indices, 1:]
-            line_points = aerofoil.points[line_dict]
-
-            # Geometry information
-            geom = -internal.point_data['implicit_distance'][cell_dict, None] # Signed distance function
-            Uinf, alpha = float(s.split('_')[2]), float(s.split('_')[3])*np.pi/180
-            # u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*(internal.point_data['U'][cell_dict, :1] != 0)
-            u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*np.ones_like(internal.point_data['U'][cell_dict, :1])
-            normal = np.zeros_like(u)
-
-            surf_geom = np.zeros_like(aerofoil.point_data['U'][line_dict, :1])
-            # surf_u = np.zeros_like(aerofoil.point_data['U'][line_dict, :2])
-            surf_u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*np.ones_like(aerofoil.point_data['U'][line_dict, :1])
-            surf_normal = -aerofoil.point_data['Normals'][line_dict, :2]
-
-            attr = np.concatenate([u, geom, normal, internal.point_data['U'][cell_dict, :2], 
-                internal.point_data['p'][cell_dict, None], internal.point_data['nut'][cell_dict, None]], axis = -1)
-            surf_attr = np.concatenate([surf_u, surf_geom, surf_normal, aerofoil.point_data['U'][line_dict, :2], 
-                aerofoil.point_data['p'][line_dict, None], aerofoil.point_data['nut'][line_dict, None]], axis = -1)
-            sampled_points = cell_sampling_2d(cell_points, attr)
-            surf_sampled_points = cell_sampling_1d(line_points, surf_attr)
-
-            # Define the inputs and the targets
-            pos = sampled_points[:, :2]
-            init = sampled_points[:, :7]
-            target = sampled_points[:, 7:]
-            surf_pos = surf_sampled_points[:, :2]
-            surf_init = surf_sampled_points[:, :7]
-            surf_target = surf_sampled_points[:, 7:]
-
-            #print("surf_target (first 5 rows):") #[u,v,p,kinematic vicosity]=[0,0,p,0]
-            # print(surf_target[:5])
-
-            # print("\nsurf_init (first 5 rows):") #[x,y,u_inf,v_inf,dist_to_airfoil = 0,nx,ny]
-            # print(surf_init[:5])
-            # if cell_centers:
-            #     centers = internal.ptc().cell_centers()
-            #     surf_centers = aerofoil.cell_centers()
-
-            #     geom = -centers.cell_data['implicit_distance'][:, None] # Signed distance function
-            #     Uinf, alpha = float(s.split('_')[2]), float(s.split('_')[3])*np.pi/180
-            #     u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*np.ones_like(internal.cell_data['U'][:, :1])
-            #     normal = np.zeros_like(u)
-
-            #     surf_geom = np.zeros_like(surf_centers.cell_data['U'][:, :1])
-            #     # surf_u = np.zeros_like(surf_centers.cell_data['U'][:, :2])
-            #     surf_u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*np.ones_like(surf_centers.cell_data['U'][:, :1])
-            #     surf_normal = -aerofoil.cell_data['Normals'][:, :2]
-
-            #     attr = np.concatenate([u, geom, normal,
-            #         internal.cell_data['U'][:, :2], internal.cell_data['p'][:, None], internal.cell_data['nut'][:, None]], axis = -1)
-            #     surf_attr = np.concatenate([surf_u, surf_geom, surf_normal,
-            #         aerofoil.cell_data['U'][:, :2], aerofoil.cell_data['p'][:, None], aerofoil.cell_data['nut'][:, None]], axis = -1)
-
-            #     bool_centers = np.concatenate([np.ones_like(centers.points[:, 0]), np.zeros_like(pos[:, 0])], axis = 0)
-            #     surf_bool_centers = np.concatenate([np.ones_like(surf_centers.points[:, 0]), np.zeros_like(surf_pos[:, 0])], axis = 0)
-            #     pos = np.concatenate([centers.points[:, :2], pos], axis = 0)
-            #     init = np.concatenate([np.concatenate([centers.points[:, :2], attr[:, :6]], axis = 1), init], axis = 0)
-            #     target = np.concatenate([attr[:, 6:], target], axis = 0)
-            #     surf_pos = np.concatenate([surf_centers.points[:, :2], surf_pos], axis = 0)
-            #     surf_init = np.concatenate([np.concatenate([surf_centers.points[:, :2], surf_attr[:, :6]], axis = 1), surf_init], axis = 0)
-            #     surf_target = np.concatenate([surf_attr[:, 6:], surf_target], axis = 0)
-
-            #     centers = torch.cat([torch.tensor(bool_centers), torch.tensor(surf_bool_centers)], dim = 0)
-
-            # Put everything in tensor
-            #surf = torch.cat([torch.zeros(len(pos)), torch.ones(len(surf_pos))], dim = 0)
-            #pos = torch.cat([torch.tensor(pos, dtype = torch.float), torch.tensor(surf_pos, dtype = torch.float)], dim = 0) 
-            #x = torch.cat([torch.tensor(init, dtype = torch.float), torch.tensor(surf_init, dtype = torch.float)], dim = 0)
-            #y = torch.cat([torch.tensor(target, dtype = torch.float), torch.tensor(surf_target, dtype = torch.float)], dim = 0) 
-            #            
-            # --- garder surface uniquement ---
-            surf = torch.ones(len(surf_pos))  # facultatif; sinon supprime ce champ
-            pos = torch.tensor(surf_pos, dtype=torch.float)
-            x   = torch.tensor(surf_init, dtype=torch.float)  
-            # y   = torch.tensor(surf_target, dtype=torch.float)   
-            # y = pression murale uniquement (3ᵉ colonne de [Ux, Uy, p, nut])
-            y = torch.tensor(surf_target[:, 2:3], dtype=torch.float)
-            # x = surf_init contient les FEATURES d'entrée pour chaque point de la surface :
-            #   [ x, y ]              -> coordonnées du point sur la surface
-            #   [ u_x, u_y ]          -> vecteur vitesse du flux incident (U∞ cos α, U∞ sin α)
-            #                            Ce n'est PAS la vitesse CFD locale au mur (qui est nulle),
-            #                            mais un paramètre global décrivant l'écoulement.
-            #   geom (=0)             -> distance signée (0 car on est sur la paroi)
-            #   [ n_x, n_y ]          -> vecteur normal à la surface (orienté vers l'extérieur)
-
-
-            # y = surf_target contient la VALEUR CFD à prédire sur la paroi: uniquement p a cause de la no slip BC:  :
-            #   p            -> pression statique sur la surface
-   
-        else: # Keep the mesh nodes
-            surf_bool = (internal.point_data['U'][:, 0] == 0)
-            geom = -internal.point_data['implicit_distance'][:, None] # Signed distance function
-            Uinf, alpha = float(s.split('_')[2]), float(s.split('_')[3])*np.pi/180
-            # u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*(internal.point_data['U'][:, :1] != 0)
-            u = (np.array([np.cos(alpha), np.sin(alpha)])*Uinf).reshape(1, 2)*np.ones_like(internal.point_data['U'][:, :1])
-            normal = np.zeros_like(u)
-            normal[surf_bool] = reorganize(aerofoil.points[:, :2], internal.points[surf_bool, :2], -aerofoil.point_data['Normals'][:, :2])
-
-            attr = np.concatenate([u, geom, normal,
-                internal.point_data['U'][:, :2], internal.point_data['p'][:, None], internal.point_data['nut'][:, None]], axis = -1)
-
-            pos = internal.points[:, :2]
-            init = np.concatenate([pos, attr[:, :5]], axis = 1)
-            target = attr[:, 5:]
-
-            # Put everything in tensor
-            surf = torch.tensor(surf_bool)
-            pos = torch.tensor(pos, dtype = torch.float)
-            x = torch.tensor(init, dtype = torch.float)
-            y = torch.tensor(target, dtype = torch.float)
-        
-        # if norm and coef_norm is None:
-        #    if k == 0:
-        #        old_length = init.shape[0]
-        #        mean_in = init.mean(axis = 0, dtype = np.double)
-        #        mean_out = target.mean(axis = 0, dtype = np.double)
-        #    else:
-        #        new_length = old_length + init.shape[0]
-        #        mean_in += (init.sum(axis = 0, dtype = np.double) - init.shape[0]*mean_in)/new_length
-        #        mean_out += (target.sum(axis = 0, dtype = np.double) - init.shape[0]*mean_out)/new_length
-        #        old_length = new_length 
-        # juste après avoir créé pos, x, y (surface) :
-
-        # Normalization on the surface and not on the volume!
+        # Running mean (for normalization)
         if norm and coef_norm is None:
+            xi = x.numpy()
+            yi = y.numpy()
             if k == 0:
-                old_length = x.numpy().shape[0]
-                mean_in  = x.numpy().mean(axis=0, dtype=np.double)
-                mean_out = y.numpy().mean(axis=0, dtype=np.double)
+                old_length = xi.shape[0]
+                mean_in = xi.mean(axis=0, dtype=np.double)
+                mean_out = yi.mean(axis=0, dtype=np.double)
             else:
-                new_length = old_length + x.numpy().shape[0]
-                mean_in  += (x.numpy().sum(axis=0, dtype=np.double) - x.numpy().shape[0]*mean_in)/new_length
-                mean_out += (y.numpy().sum(axis=0, dtype=np.double) - y.numpy().shape[0]*mean_out)/new_length
+                new_length = old_length + xi.shape[0]
+                mean_in += (xi.sum(axis=0, dtype=np.double) - xi.shape[0]*mean_in) / new_length
+                mean_out += (yi.sum(axis=0, dtype=np.double) - xi.shape[0]*mean_out) / new_length
                 old_length = new_length
 
-        # Graph definition
-        # if cell_centers:
-        #     data = Data(pos = pos, x = x, y = y, surf = surf.bool(), centers = centers.bool())
-        # else:
-        #     data = Data(pos = pos, x = x, y = y, surf = surf.bool())
-        data = Data(pos = pos, x = x, y = y, surf = surf.bool())
+        data = Data(pos=pos, x=x, y=y, surf=surf)
+
+        G = None
+        # Optionally attach global descriptor (from Parquet dict G)
+        if G is not None:
+            foil_key = s.strip()
+            if foil_key in G:
+                data.g = torch.tensor(G[foil_key], dtype=torch.float32)  # shape: (1024,)
+            # else: no global vector for this foil → skip silently
+
+
         dataset.append(data)
 
+    # Compute normalization if requested
     if norm and coef_norm is None:
-        # Compute normalization
-        mean_in = mean_in.astype(np.single)
-        mean_out = mean_out.astype(np.single)
-        # Umean = np.linalg.norm(data.x[:, 2:4], axis = 1).mean()     
+        mean_in = mean_in.astype(np.float32)
+        mean_out = mean_out.astype(np.float32)
+        old_length = 0
+        std_in = None
+        std_out = None
+
         for k, data in enumerate(dataset):
-            # data.x = data.x/torch.tensor([6, 6, Umean, Umean, 6, 1, 1], dtype = torch.float)
-            # data.y = data.y/torch.tensor([Umean, Umean, .5*Umean**2, Umean], dtype = torch.float)
-
+            xi = data.x.numpy()
+            yi = data.y.numpy()
             if k == 0:
-                old_length = data.x.numpy().shape[0]
-                std_in = ((data.x.numpy() - mean_in)**2).sum(axis = 0, dtype = np.double)/old_length
-                std_out = ((data.y.numpy() - mean_out)**2).sum(axis = 0, dtype = np.double)/old_length
+                old_length = xi.shape[0]
+                std_in = ((xi - mean_in)**2).sum(axis=0, dtype=np.double) / old_length
+                std_out = ((yi - mean_out)**2).sum(axis=0, dtype=np.double) / old_length
             else:
-                new_length = old_length + data.x.numpy().shape[0]
-                std_in += (((data.x.numpy() - mean_in)**2).sum(axis = 0, dtype = np.double) - data.x.numpy().shape[0]*std_in)/new_length
-                std_out += (((data.y.numpy() - mean_out)**2).sum(axis = 0, dtype = np.double) - data.x.numpy().shape[0]*std_out)/new_length
+                new_length = old_length + xi.shape[0]
+                std_in += (((xi - mean_in)**2).sum(axis=0, dtype=np.double) - xi.shape[0]*std_in) / new_length
+                std_out += (((yi - mean_out)**2).sum(axis=0, dtype=np.double) - xi.shape[0]*std_out) / new_length
                 old_length = new_length
-        
-        std_in = np.sqrt(std_in).astype(np.single)
-        std_out = np.sqrt(std_out).astype(np.single)
 
-        # Normalize
+        std_in = np.sqrt(std_in).astype(np.float32)
+        std_out = np.sqrt(std_out).astype(np.float32)
+
         for data in dataset:
-            data.x = (data.x - mean_in)/(std_in + 1e-8)
-            data.y = (data.y - mean_out)/(std_out + 1e-8)
+            data.x = (data.x - torch.tensor(mean_in)) / (torch.tensor(std_in) + 1e-8)
+            data.y = (data.y - torch.tensor(mean_out)) / (torch.tensor(std_out) + 1e-8)
 
-        coef_norm = (mean_in, std_in, mean_out, std_out)     
-        dataset = (dataset, coef_norm)   
-    
+        coef_norm = (mean_in, std_in, mean_out, std_out)
+        return dataset, coef_norm
+
     elif coef_norm is not None:
-        # Normalize
+        mi, si, mo, so = coef_norm
+        mi, si, mo, so = map(torch.tensor, (mi, si, mo, so))
         for data in dataset:
-            # data.x = data.x/torch.tensor([6, 6, coef_norm[-1], coef_norm[-1], 6, 1, 1], dtype = torch.float)
-            # data.y = data.y/torch.tensor([coef_norm[-1], coef_norm[-1], .5*coef_norm[-1]**2, coef_norm[-1]], dtype = torch.float)
-            data.x = (data.x - coef_norm[0])/(coef_norm[1] + 1e-8)
-            data.y = (data.y - coef_norm[2])/(coef_norm[3] + 1e-8)
-    
+            data.x = (data.x - mi) / (si + 1e-8)
+            data.y = (data.y - mo) / (so + 1e-8)
+
+    return dataset
+'''
+def Dataset(
+    set,
+    *,
+    norm: bool = False,
+    coef_norm=None,
+    sample='uniform',
+    surf_ratio=1,
+    n_surface_points: int = 10,
+    # --- Global features (defaults to your cls_focal_clr model) ---
+    global_features_parquet: str | None = "../point_net/extracted_features/cls_model_15/cls_model_15_features.parquet",
+    use_global_features: bool = True,
+):
+    """
+    Builds list of torch_geometric Data objects for training.
+
+    Each Data includes:
+        - x: [N,7] local inputs
+        - y: [N,1] wall pressure
+        - pos: [N,2] coordinates
+        - surf: mask (all True)
+        - g: [1024] optional global descriptor
+    """
+    if norm and coef_norm is not None:
+        raise ValueError('Provide either norm=True or coef_norm, not both.')
+
+    dataset = []
+
+    # ---- Load global features (optional) ----
+    G = None
+    if use_global_features:
+        if not osp.exists(global_features_parquet):
+            raise FileNotFoundError(global_features_parquet)
+        G = _load_global_parquet(global_features_parquet)
+    # ----------------------------------------
+
+    # Accumulators for normalization
+    if norm and coef_norm is None:
+        old_length = 0
+        mean_in = None
+        mean_out = None
+
+    for k, s in enumerate(tqdm(set)):
+        internal = pv.read(osp.join('..', 'Dataset', s, s + '_internal.vtu'))
+        aerofoil = pv.read(osp.join('..', 'Dataset', s, s + '_aerofoil.vtp'))
+
+        # Local surface data
+        pos, x, y, surf = _compute_surface_io(aerofoil, internal, s, n_surface_points)
+        data = Data(pos=pos, x=x, y=y, surf=surf)
+
+        # --- Attach global feature vector if available ---
+        if G is not None:
+            foil_key = s.strip()
+            if foil_key in G:
+                data.g = torch.tensor(G[foil_key], dtype=torch.float32)  # (1024,)
+        # -------------------------------------------------
+
+        # --- Running mean for normalization ---
+        if norm and coef_norm is None:
+            xi = x.numpy()
+            yi = y.numpy()
+            if k == 0:
+                old_length = xi.shape[0]
+                mean_in = xi.mean(axis=0, dtype=np.double)
+                mean_out = yi.mean(axis=0, dtype=np.double)
+            else:
+                new_length = old_length + xi.shape[0]
+                mean_in += (xi.sum(axis=0, dtype=np.double) - xi.shape[0]*mean_in) / new_length
+                mean_out += (yi.sum(axis=0, dtype=np.double) - xi.shape[0]*mean_out) / new_length
+                old_length = new_length
+
+        dataset.append(data)
+
+    # --- Normalization ---
+    if norm and coef_norm is None:
+        mean_in = mean_in.astype(np.float32)
+        mean_out = mean_out.astype(np.float32)
+        old_length = 0
+        std_in = None
+        std_out = None
+
+        for k, data in enumerate(dataset):
+            xi = data.x.numpy()
+            yi = data.y.numpy()
+            if k == 0:
+                old_length = xi.shape[0]
+                std_in = ((xi - mean_in)**2).sum(axis=0, dtype=np.double) / old_length
+                std_out = ((yi - mean_out)**2).sum(axis=0, dtype=np.double) / old_length
+            else:
+                new_length = old_length + xi.shape[0]
+                std_in += (((xi - mean_in)**2).sum(axis=0, dtype=np.double) - xi.shape[0]*std_in) / new_length
+                std_out += (((yi - mean_out)**2).sum(axis=0, dtype=np.double) - xi.shape[0]*std_out) / new_length
+                old_length = new_length
+
+        std_in = np.sqrt(std_in).astype(np.float32)
+        std_out = np.sqrt(std_out).astype(np.float32)
+
+        for data in dataset:
+            data.x = (data.x - torch.tensor(mean_in)) / (torch.tensor(std_in) + 1e-8)
+            data.y = (data.y - torch.tensor(mean_out)) / (torch.tensor(std_out) + 1e-8)
+
+        coef_norm = (mean_in, std_in, mean_out, std_out)
+        return dataset, coef_norm
+
+    elif coef_norm is not None:
+        mi, si, mo, so = coef_norm
+        mi, si, mo, so = map(torch.tensor, (mi, si, mo, so))
+        for data in dataset:
+            data.x = (data.x - mi) / (si + 1e-8)
+            data.y = (data.y - mo) / (so + 1e-8)
+
     return dataset

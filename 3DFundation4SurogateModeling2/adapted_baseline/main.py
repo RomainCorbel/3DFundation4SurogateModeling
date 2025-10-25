@@ -14,7 +14,7 @@ parser.add_argument('-t', '--task', help = 'Task to train on. Choose between "fu
 parser.add_argument('-s', '--score', help = 'If you want to compute the score of the models on the associated test set. (default: 0)', default = 0, type = int)
 args = parser.parse_args()
 
-with open('Dataset/manifest.json', 'r') as f:
+with open('../Dataset/manifest.json', 'r') as f:
     manifest = json.load(f)
 
 manifest_train = manifest[args.task + '_train']
@@ -28,10 +28,11 @@ val_dataset = manifest_train[-n:]
 #     val_dataset = torch.load('Dataset/val_dataset')
 #     coef_norm = torch.load('Dataset/normalization')
 # else:
-train_dataset, coef_norm = Dataset(train_dataset, norm = True, sample = 'uniform', surf_ratio = 1)
+train_dataset, coef_norm = Dataset(train_dataset, norm = True)
+print(train_dataset)
 # torch.save(train_dataset, 'Dataset/train_dataset')
 # torch.save(coef_norm, 'Dataset/normalization')
-val_dataset = Dataset(val_dataset, sample = 'uniform', coef_norm = coef_norm, surf_ratio = 1)
+val_dataset = Dataset(val_dataset, coef_norm = coef_norm)
 # torch.save(val_dataset, 'Dataset/val_dataset')
 
 # Cuda
@@ -80,7 +81,7 @@ if bool(args.score):
     s = args.task + '_test' if args.task != 'scarce' else 'full_test'
     true_coefs, pred_mean, pred_std = metrics.Results_test(
         device, [models], [hparams], coef_norm,
-        path_in='Dataset', path_out='scores',
+        path_in='../Dataset', path_out='scores',
         n_test=3, criterion='MSE', s=s
     )
 

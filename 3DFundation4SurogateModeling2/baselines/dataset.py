@@ -96,8 +96,8 @@ def Dataset(set, norm = False, coef_norm = None, crop = None, sample = 'uniform'
 
     for k, s in enumerate(tqdm(set)):
         # Get the 3D mesh, add the signed distance function and slice it to return in 2D
-        internal = pv.read(osp.join('Dataset', s, s + '_internal.vtu'))
-        aerofoil = pv.read(osp.join('Dataset', s, s + '_aerofoil.vtp'))
+        internal = pv.read(osp.join('..', 'Dataset', s, s + '_internal.vtu'))
+        aerofoil = pv.read(osp.join('..', 'Dataset', s, s + '_aerofoil.vtp'))
         internal = internal.compute_cell_sizes(length = False, volume = False)
         
         # Cropping if needed, crinkle is True.

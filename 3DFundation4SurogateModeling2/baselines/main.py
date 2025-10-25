@@ -14,7 +14,7 @@ parser.add_argument('-t', '--task', help = 'Task to train on. Choose between "fu
 parser.add_argument('-s', '--score', help = 'If you want to compute the score of the models on the associated test set. (default: 0)', default = 0, type = int)
 args = parser.parse_args()
 
-with open('Dataset/manifest.json', 'r') as f:
+with open('../Dataset/manifest.json', 'r') as f:
     manifest = json.load(f)
 
 manifest_train = manifest[args.task + '_train']

@@ -7,7 +7,7 @@ import torch_geometric.nn as nng
 import json
 from dataset import Dataset
 
-def Results_test(device, models_list, hparams_list, coef_norm, path_in='Dataset', path_out='scores', 
+def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Dataset', path_out='scores', 
                  n_test=3, criterion='MSE', s='full_test'):
     """
     Compute test results for surface-only pressure prediction models.
