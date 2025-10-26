@@ -254,7 +254,7 @@ def Dataset(
     coef_norm=None,
     sample='uniform',
     surf_ratio=1,
-    n_surface_points: int = 10,
+    n_surface_points: int = 1000,
     # --- Global features (defaults to your cls_focal_clr model) ---
     global_features_parquet: str | None = "../point_net/extracted_features/cls_model_15/cls_model_15_features.parquet",
     use_global_features: bool = True,

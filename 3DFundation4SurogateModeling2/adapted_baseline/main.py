@@ -23,25 +23,24 @@ n = int(.1*len(manifest_train))
 train_dataset = manifest_train[:-n]
 val_dataset = manifest_train[-n:]
 
-# if os.path.exists('Dataset/train_dataset'):
-#     train_dataset = torch.load('Dataset/train_dataset')
-#     val_dataset = torch.load('Dataset/val_dataset')
-#     coef_norm = torch.load('Dataset/normalization')
-# else:
-train_dataset, coef_norm = Dataset(train_dataset, norm = True)
+if os.path.exists('save_dataset/train_dataset'):
+     print("loading train_dataset and val_dataset")
+     train_dataset = torch.load('save_dataset/train_dataset', map_location="cpu", weights_only=False)
+     val_dataset = torch.load('save_dataset/val_dataset', map_location="cpu", weights_only=False)
+     coef_norm = torch.load('save_dataset/normalization', map_location="cpu", weights_only=False)
+else:
+    print("Building train_dataset and val_dataset")
+    train_dataset, coef_norm = Dataset(train_dataset, norm = True)
+    val_dataset = Dataset(val_dataset, coef_norm=coef_norm)
 
-save_dir = 'save_dataset'   # or 'datasets_cache' if you prefer
-os.makedirs(save_dir, exist_ok=True)
-
-torch.save(train_dataset, osp.join(save_dir, 'train_dataset'))
-torch.save(coef_norm,     osp.join(save_dir, 'normalization'))
-
-val_dataset = Dataset(val_dataset, coef_norm=coef_norm)
-torch.save(val_dataset,  osp.join(save_dir, 'val_dataset'))
-
-print(f"[SAVE] Train -> {osp.abspath(osp.join(save_dir,'train_dataset'))}")
-print(f"[SAVE] Val   -> {osp.abspath(osp.join(save_dir,'val_dataset'))}")
-print(f"[SAVE] Norm  -> {osp.abspath(osp.join(save_dir,'normalization'))}")
+    save_dir = 'save_dataset' 
+    os.makedirs(save_dir, exist_ok=True)
+    torch.save(train_dataset, osp.join(save_dir, 'train_dataset'))
+    torch.save(coef_norm,     osp.join(save_dir, 'normalization'))
+    torch.save(val_dataset,  osp.join(save_dir, 'val_dataset'))
+    print(f"[SAVE] Train -> {osp.abspath(osp.join(save_dir,'train_dataset'))}")
+    print(f"[SAVE] Val   -> {osp.abspath(osp.join(save_dir,'val_dataset'))}")
+    print(f"[SAVE] Norm  -> {osp.abspath(osp.join(save_dir,'normalization'))}")
 
 
 # Cuda
@@ -79,7 +78,29 @@ for i in range(args.nmodel):
         from models.GUNet import GUNet
         model = GUNet(hparams, encoder, decoder)    
 
+    # NEW global-fusion variants
+    elif args.model == "GraphSAGEGlobal":
+        from models.GraphSAGEGlobal import GraphSAGEGlobal
+        model = GraphSAGEGlobal(hparams, encoder, decoder) 
+    elif args.model == "GUNetGlobal":
+        from models.GUNetGlobal import GUNetGlobal
+        model = GUNetGlobal(hparams, encoder, decoder) 
+    elif args.model == "MLPGlobal":
+        from models.NNGlobal import NNGlobal
+        model = NNGlobal(hparams, encoder, decoder) 
+    elif args.model == "PointNetGlobal":
+        from models.PointNetGlobal import PointNetGlobal
+        model = PointNetGlobal(hparams, encoder, decoder) 
+    else:
+        raise ValueError(f"Unknown model: {args.model}")
     
+    if "Global" in args.model:
+        # quick sanity: first train sample must carry .g
+        sample = train_dataset[0]
+        if not hasattr(sample, "g"):
+            raise RuntimeError("Global model selected but dataset samples have no `.g` global vector. "
+                            "Enable use_global_features in Dataset() / provide the parquet.")
+
     log_path = osp.join('metrics', args.task, args.model) # path where you want to save log and figures    
     model = train.main(device, train_dataset, val_dataset, model, hparams, log_path, 
                 criterion = 'MSE', val_iter = 10, reg = args.weight, name_mod = args.model, val_sample = True)

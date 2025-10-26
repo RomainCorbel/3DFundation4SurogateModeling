@@ -1,0 +1,53 @@
+{
+  "task": "pressure_surface_only",
+  "loss": "MSE",
+  "nb_parameters": 137817.0,
+  "time_elapsed": 14.308241605758667,
+  "hparams": {
+    "encoder": [
+      7,
+      64
+    ],
+    "decoder": [
+      64,
+      64,
+      1
+    ],
+    "base_nb": 8,
+    "batch_size": 1,
+    "nb_epochs": 10,
+    "lr": 0.001,
+    "subsampling": 32000,
+    "use_global_fusion": true,
+    "global_in": 1024,
+    "global_fuse": 64
+  },
+  "train_loss": 0.12408547103404999,
+  "val_loss": 0.08030264163127868
+}{
+  "task": "pressure_surface_only",
+  "loss": "MSE",
+  "nb_parameters": 137817.0,
+  "time_elapsed": 11.93774938583374,
+  "hparams": {
+    "encoder": [
+      7,
+      64
+    ],
+    "decoder": [
+      64,
+      64,
+      1
+    ],
+    "base_nb": 8,
+    "batch_size": 1,
+    "nb_epochs": 10,
+    "lr": 0.001,
+    "subsampling": 32000,
+    "use_global_fusion": true,
+    "global_in": 1024,
+    "global_fuse": 64
+  },
+  "train_loss": 0.07515488564968109,
+  "val_loss": 0.08790326239191927
+}

@@ -157,7 +157,7 @@ def main(device, train_dataset, val_dataset, Net, hparams, path,
             data_sampled.surf = data_sampled.surf[idx]
 
             # build edges if needed (graph models)
-            if name_mod not in ('PointNet', 'MLP'):
+            if name_mod not in ('PointNet', 'MLP', 'PointNetGlobal', 'MLPGlobal'):
                 
                 data_sampled.edge_index = nng.radius_graph(
                     x=data_sampled.pos.to(device),
@@ -205,7 +205,7 @@ def main(device, train_dataset, val_dataset, Net, hparams, path,
                         data_sampled.y = data_sampled.y[idx]
                         data_sampled.surf = data_sampled.surf[idx]
 
-                        if name_mod not in ('PointNet', 'MLP'):
+                        if name_mod not in ('PointNet', 'MLP', 'PointNetGlobal', 'MLPGlobal'):
                             
                             data_sampled.edge_index = nng.radius_graph(
                                 x=data_sampled.pos.to(device),

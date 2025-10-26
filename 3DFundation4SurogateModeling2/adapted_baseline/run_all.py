@@ -3,7 +3,7 @@ import sys
 from itertools import product
 
 
-MODELS = ["MLP", "PointNet", "GraphSAGE", "GUNet"]
+MODELS = ["MLPGlobal", "PointNetGlobal", "GraphSAGEGlobal", "GUNetGlobal", "MLP", "PointNet", "GraphSAGE", "GUNet"]
 TASKS = ["scarce"]
 
 
