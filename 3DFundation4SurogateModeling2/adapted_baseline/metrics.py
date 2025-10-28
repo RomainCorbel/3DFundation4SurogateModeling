@@ -6,7 +6,7 @@ import random
 import torch_geometric.nn as nng
 import json
 from dataset import Dataset
-
+import os
 def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Dataset', path_out='scores', 
                  n_test=3, criterion='MSE', s='full_test'):
     """
@@ -34,8 +34,14 @@ def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Datas
         manifest = json.load(f)
     test_files = manifest[s]
     
-    test_dataset = Dataset(test_files, sample='uniform', coef_norm=coef_norm, surf_ratio=1)
     
+    if os.path.exists('save_dataset/test_dataset'):
+        print("loading test_dataset")
+        test_dataset = torch.load('save_dataset/test_dataset', map_location="cpu", weights_only=False)
+    else:
+        print("Building test_dataset")
+        test_dataset = Dataset(test_files, coef_norm=coef_norm)
+        
     # Initialize storage
     all_true = []
     all_preds = []
@@ -66,21 +72,12 @@ def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Datas
                     
                     # Build edges for graph models only (not for MLP or PointNet)
                     if 'r' in hparams and hparams['r'] is not None:
-                        '''
-                        data_sampled.edge_index = nng.radius_graph(
-                            x=data_sampled.pos,
-                            r=hparams['r'],
-                            loop=True,
-                            max_num_neighbors=int(hparams['max_neighbors'])
-                        ).cpu()
-                        '''
                         data_sampled.edge_index = nng.radius_graph(
                             x=data_sampled.pos.to(device),
                             r=hparams['r'],
                             loop=True,
                             max_num_neighbors=int(hparams['max_neighbors'])
                         ).cpu()
-                    
                     test_dataset_sampled.append(data_sampled)
             
             test_loader = DataLoader(test_dataset_sampled, batch_size=1, shuffle=False)

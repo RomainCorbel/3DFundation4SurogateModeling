@@ -27,17 +27,20 @@ if os.path.exists('save_dataset/train_dataset'):
      print("loading train_dataset and val_dataset")
      train_dataset = torch.load('save_dataset/train_dataset', map_location="cpu", weights_only=False)
      val_dataset = torch.load('save_dataset/val_dataset', map_location="cpu", weights_only=False)
+     test_dataset = torch.load('save_dataset/test_dataset', map_location="cpu", weights_only=False)
      coef_norm = torch.load('save_dataset/normalization', map_location="cpu", weights_only=False)
 else:
-    print("Building train_dataset and val_dataset")
+    print("Building train_dataset, val_dataset and test_dataset")
     train_dataset, coef_norm = Dataset(train_dataset, norm = True)
     val_dataset = Dataset(val_dataset, coef_norm=coef_norm)
-
+    test_dataset = Dataset(test_dataset, coef_norm=coef_norm)
+    
     save_dir = 'save_dataset' 
     os.makedirs(save_dir, exist_ok=True)
     torch.save(train_dataset, osp.join(save_dir, 'train_dataset'))
     torch.save(coef_norm,     osp.join(save_dir, 'normalization'))
     torch.save(val_dataset,  osp.join(save_dir, 'val_dataset'))
+    torch.save(test_dataset,  osp.join(save_dir, 'test_dataset'))
     print(f"[SAVE] Train -> {osp.abspath(osp.join(save_dir,'train_dataset'))}")
     print(f"[SAVE] Val   -> {osp.abspath(osp.join(save_dir,'val_dataset'))}")
     print(f"[SAVE] Norm  -> {osp.abspath(osp.join(save_dir,'normalization'))}")
@@ -105,8 +108,9 @@ for i in range(args.nmodel):
     model = train.main(device, train_dataset, val_dataset, model, hparams, log_path, 
                 criterion = 'MSE', val_iter = 10, reg = args.weight, name_mod = args.model, val_sample = True)
     models.append(model)
-torch.save(models, osp.join('metrics', args.task, args.model, args.model))
 
+torch.save(models, osp.join(log_path, args.model))
+# torch.save(models, osp.join('metrics', args.task, args.model, args.model))
 if bool(args.score):
     s = args.task + '_test' if args.task != 'scarce' else 'full_test'
     true_coefs, pred_mean, pred_std = metrics.Results_test(

@@ -57,9 +57,8 @@ GUNet:
 
 # ---------- Global-fusion variants (merge at 64) ----------
 GraphSAGEGlobal:
-  # fuse right after a 7→64 encoder
-  encoder: [7, 64]
-  decoder: [64, 64, 1]
+  encoder: [7, 64, 64, 8]     # same as baseline encoder
+  decoder: [8, 64, 64, 1]     # same as baseline decoder
 
   nb_hidden_layers: 3
   size_hidden_layers: 64
@@ -74,11 +73,11 @@ GraphSAGEGlobal:
   # global fusion config
   use_global_fusion: true
   global_in: 1024
-  global_fuse: 64
+  global_fuse: 8               # fuse at encoder output dim (not 64)
 
 PointNetGlobal:
-  encoder: [7, 64]
-  decoder: [64, 64, 1]
+  encoder: [7, 64, 64, 8]     # same as baseline
+  decoder: [8, 64, 64, 1]     # same as baseline
 
   base_nb: 8
   batch_size: 1
@@ -88,27 +87,26 @@ PointNetGlobal:
 
   use_global_fusion: true
   global_in: 1024
-  global_fuse: 64
+  global_fuse: 8              # fuse at encoder output dim (== 8)
+
 
 MLPGlobal:
-  encoder: [7, 64]
-  decoder: [64, 64, 1]
-
+  encoder: [7, 64, 64, 8]     # <-- not [7, 64]
+  decoder: [8, 64, 64, 1]     # decoder[0] matches encoder last = 8
   nb_hidden_layers: 3
   size_hidden_layers: 64
+  bn_bool: True
   batch_size: 1
   nb_epochs: 398
   lr: 0.001
-  bn_bool: True
   subsampling: 32000
-
   use_global_fusion: true
   global_in: 1024
-  global_fuse: 64
-
+  global_fuse: 8
+  
 GUNetGlobal:
-  encoder: [7, 64]
-  decoder: [64, 64, 1]
+  encoder: [7, 64, 64, 8]    # SAME as baseline
+  decoder: [8, 64, 64, 1]    # SAME as baseline
 
   layer: 'SAGE'
   pool: 'random'
@@ -128,4 +126,4 @@ GUNetGlobal:
 
   use_global_fusion: true
   global_in: 1024
-  global_fuse: 64
+  global_fuse: 8             # FUSE AT 8 (encoder output)

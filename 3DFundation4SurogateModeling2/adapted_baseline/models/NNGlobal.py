@@ -1,15 +1,13 @@
 # models/NN.py
+import torch
 import torch.nn as nn
 from models.MLP import MLP
 from models.GlobalFusion import GlobalFusion
 
 class NNGlobal(nn.Module):
     """
-    MLP + Global fusion :
-      - encoder : [N,7] -> [N,64]
-      - GlobalFusion : proj(g:1024->64), broadcast, addition résiduelle à 64
-      - bloc MLP 'milieu' : [N,64] -> [N, decoder_in]
-      - decoder : [N, decoder_in] -> [N,1]
+    Baseline NN with an optional global fusion *after* the encoder output.
+    When alpha=0 in GlobalFusion, this is exactly the baseline.
     """
     def __init__(self, hparams, encoder, decoder):
         super(NNGlobal, self).__init__()
@@ -18,38 +16,34 @@ class NNGlobal(nn.Module):
         self.size_hidden_layers = hparams['size_hidden_layers']
         self.bn_bool            = hparams['bn_bool']
 
-        self.encoder = encoder
-        self.decoder = decoder
+        # Keep your original modules untouched:
+        self.encoder = encoder                     # baseline encoder (e.g., [7,64,64,8])
+        self.decoder = decoder                     # baseline decoder (e.g., [8,64,64,1])
 
-        # largeur en sortie d'encodeur (doit être 64 pour la variante Global)
-        self.dim_enc = hparams['encoder'][-1]            # attendu = 64 ici
-        self.decoder_in = hparams['decoder'][0]          # ex: 64 (variante Global)
+        # This matches the baseline feature width passed to self.nn:
+        self.dim_enc = hparams['encoder'][-1]      # e.g., 8
+        # Baseline mid-MLP (unchanged):
+        self.nn = MLP([self.dim_enc] + [self.size_hidden_layers]*self.nb_hidden_layers + [self.dim_enc],
+                      batch_norm=self.bn_bool)
 
-        # ---- Fusion globale juste après l'encodeur (merge à 64) ----
+        # Optional fusion (project g to dim_enc and add). With alpha=0 ⇒ exact baseline.
         self.use_global_fusion = hparams.get('use_global_fusion', False)
         if self.use_global_fusion:
             self.fuse = GlobalFusion(
-                W_local     = self.dim_enc,                      # 64
-                W_global_in = hparams.get('global_in', 1024),    # 1024
-                W_fuse      = hparams.get('global_fuse', self.dim_enc)  # 64
+                W_local     = self.dim_enc,                    # fuse at 8 (encoder output width)
+                W_global_in = hparams.get('global_in', 1024),
+                W_fuse      = self.dim_enc,                    # project g: 1024 -> 8
             )
-
-        # ---- MLP "milieu" (entre encoder/fusion et decoder) ----
-        # Ex: [64] + [64]*nb_hidden + [decoder_in]
-        channels = [self.dim_enc] + [self.size_hidden_layers]*self.nb_hidden_layers + [self.decoder_in]
-        self.nn_mid = MLP(channels, batch_norm=self.bn_bool)
+            # HARD KO by default: ensure alpha = 0 and frozen
+            #with torch.no_grad():
+            #    self.fuse.alpha.fill_(0.0)
+            # self.fuse.alpha.requires_grad_(False)
+            self.fuse.alpha.data.fill_(0.0)
 
     def forward(self, data):
-        # 1) encodeur local : [N,7] -> [N,64]
-        z = self.encoder(data.x)  # (N, 64)
-
-        # 2) fusion globale à 64 (projet(g), broadcast, addition)
+        z = self.encoder(data.x)                               # (N, dim_enc) — baseline
         if self.use_global_fusion and hasattr(data, 'g'):
-            z = self.fuse(z, data.g, getattr(data, "batch", None))  # (N, 64)
-
-        # 3) MLP milieu
-        z = self.nn_mid(z)    # (N, decoder_in)
-
-        # 4) tête de sortie
-        z = self.decoder(z)   # (N, 1)
+            z = self.fuse(z, data.g, getattr(data, "batch", None))  # alpha=0 → no-op
+        z = self.nn(z)                                         # (N, dim_enc) — baseline mid MLP
+        z = self.decoder(z)                                    # (N, 1)       — baseline
         return z

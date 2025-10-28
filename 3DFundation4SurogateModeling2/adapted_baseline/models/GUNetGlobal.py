@@ -1,3 +1,4 @@
+# models/GUNetGlobal.py
 import torch
 import torch.nn as nn
 import torch_geometric.nn as nng
@@ -19,24 +20,18 @@ def DownSample(id, x, edge_index, pos_x, pool, pool_ratio, r, max_neighbors):
 
     pos_x = pos_x[id_sampled]
     id.append(id_sampled)
-
     edge_index_sampled = nng.radius_graph(x=pos_x.detach(), r=r, loop=True, max_num_neighbors=max_neighbors)
     return y, edge_index_sampled
-
 
 def UpSample(x, pos_x_up, pos_x_down):
     cluster = nng.nearest(pos_x_up, pos_x_down)
     x_up = x[cluster]
     return x_up
 
-
 class GUNetGlobal(nn.Module):
     """
-    Same GUNet as your baseline, but with GlobalFusion at 64-dim:
-      encoder: [N,7] -> [N,64]
-      fuse: project g:1024->64, broadcast, residual add at 64
-      UNet (down/up)
-      decoder -> [N,1]
+    Baseline GUNet with optional GlobalFusion AFTER encoder output (fuse at dim_enc).
+    With alpha=0 inside GlobalFusion, this is exactly the baseline.
     """
     def __init__(self, hparams, encoder, decoder):
         super(GUNetGlobal, self).__init__()
@@ -49,7 +44,7 @@ class GUNetGlobal(nn.Module):
         self.size_hidden_layers = hparams['size_hidden_layers']
         self.size_hidden_layers_init = hparams['size_hidden_layers']
         self.max_neighbors = hparams['max_neighbors']
-        self.dim_enc = hparams['encoder'][-1]             # 64 (merge point)
+        self.dim_enc = hparams['encoder'][-1]      # e.g., 8 (IMPORTANT)
         self.bn_bool = hparams['batchnorm']
         self.res = hparams['res']
         self.head = 2
@@ -58,14 +53,20 @@ class GUNetGlobal(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        # ---- Global fusion right after encoder (merge at 64) ----
+        # ---- Global fusion AFTER encoder output (fuse at dim_enc) ----
         self.use_global_fusion = hparams.get('use_global_fusion', False)
         if self.use_global_fusion:
             self.fuse = GlobalFusion(
-                W_local     = self.dim_enc,                       # 64
-                W_global_in = hparams.get('global_in', 1024),     # 1024
-                W_fuse      = hparams.get('global_fuse', self.dim_enc)  # 64
+                W_local     = self.dim_enc,                       # fuse at 8
+                W_global_in = hparams.get('global_in', 1024),
+                W_fuse      = self.dim_enc                        # 1024 -> 8
             )
+            # learn-from-zero: start at 0 (trainable by default)
+            # HARD KO by default: ensure alpha = 0 and frozen
+            #with torch.no_grad():
+            #    self.fuse.alpha.fill_(0.0)
+            # self.fuse.alpha.requires_grad_(False)
+            self.fuse.alpha.data.fill_(0.0)
 
         # ---- Down path ----
         self.down_layers = nn.ModuleList()
@@ -160,13 +161,13 @@ class GUNetGlobal(nn.Module):
         edge_index_list = [edge_index.clone()]
         pos_x_list = []
 
-        # 1) Encoder [N,7] -> [N,64]
+        # 1) Encoder [N,7] -> [N, dim_enc]
         z = self.encoder(x)
 
-        # 2) Global fusion at 64 (project g:1024->64, broadcast, add)
+        # 2) Global fusion at dim_enc
         if self.use_global_fusion and hasattr(data, 'g'):
             batch = getattr(data, "batch", None)
-            z = self.fuse(z, data.g, batch)   # (N,64)
+            z = self.fuse(z, data.g, batch)   # (N, dim_enc)
 
         if self.res:
             z_res = z.clone()
@@ -183,9 +184,11 @@ class GUNetGlobal(nn.Module):
             pos_x_list.append(pos_x.clone())
 
             if self.pool_type != 'random':
-                z, edge_index = DownSample(id, z, edge_index, pos_x, self.pool[n], self.pool_ratio[n], self.list_r[n], self.max_neighbors)
+                z, edge_index = DownSample(id, z, edge_index, pos_x, self.pool[n],
+                                           self.pool_ratio[n], self.list_r[n], self.max_neighbors)
             else:
-                z, edge_index = DownSample(id, z, edge_index, pos_x, None, self.pool_ratio[n], self.list_r[n], self.max_neighbors)
+                z, edge_index = DownSample(id, z, edge_index, pos_x, None,
+                                           self.pool_ratio[n], self.list_r[n], self.max_neighbors)
             edge_index_list.append(edge_index.clone())
 
             z = self.down_layers[n + 1](z, edge_index)
@@ -202,7 +205,7 @@ class GUNetGlobal(nn.Module):
             z = torch.cat([z, z_list[n - 1]], dim=1)
             z = self.up_layers[n - 1](z, edge_index_list[n - 1])
             if self.bn_bool:
-                self.bn[self.L + n - 1](z)
+                z = self.bn[self.L + n - 1](z)   # <-- assign back to z
             z = self.activation(z) if n != 1 else z
 
         del z_list, pos_x_list, edge_index_list
