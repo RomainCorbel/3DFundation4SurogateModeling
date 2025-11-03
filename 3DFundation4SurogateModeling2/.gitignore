@@ -207,3 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 Dataset/
+archive/
+3DFundation4SurogateModeling2/point_netANDpoint_MAE/models/point_mae/models/checkpoints/pretrain.pth
+point_netANDpoint_MAE/models/point_mae/models/checkpoints/pretrain.pth
