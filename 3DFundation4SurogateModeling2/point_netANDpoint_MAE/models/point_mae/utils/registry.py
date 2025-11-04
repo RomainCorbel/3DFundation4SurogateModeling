@@ -1,7 +1,7 @@
 import inspect
 import warnings
 from functools import partial
-from models.point_mae.utils import config
+from utils import config
 
 class Registry:
     """A registry to map strings to classes.

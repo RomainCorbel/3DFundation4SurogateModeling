@@ -26,7 +26,7 @@ from torchmetrics.classification import MulticlassMatthewsCorrCoef
 # Local modules
 from open3d.web_visualizer import draw  # for non-Colab
 from models.point_net.point_net import PointNetClassHead
-from utils.shapenet_dataset import ShapenetDataset
+from UTILS.shapenet_dataset import ShapenetDataset
 
 NUM_TRAIN_POINTS = 2500
 NUM_TEST_POINTS = 10000
@@ -141,7 +141,7 @@ def analyze_pointnet_backbone(
     print(f"[{model_name}] Saved extracted features to:\n  - {out_csv}\n  - {out_parq if osp.exists(out_parq) else '(parquet not written)'}")
     # 
     if plots:
-        from utils.plot_tsne import plot_extracted_features_tsne
+        from UTILS.plot_tsne import plot_extracted_features_tsne
         plot_extracted_features_tsne(X, test_dataset, model_name, save_dir=save_dir)
     '''
     if plots:

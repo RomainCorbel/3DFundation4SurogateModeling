@@ -1,4 +1,4 @@
-from models.point_mae.utils import registry
+from utils import registry
 
 
 MODELS = registry.Registry('models')

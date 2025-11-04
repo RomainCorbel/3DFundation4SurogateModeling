@@ -5,74 +5,14 @@ import timm
 from timm.models.layers import DropPath, trunc_normal_
 import numpy as np
 from .build import MODELS
-from models.point_mae.utils import misc
-from models.point_mae.utils.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
-from models.point_mae.utils.logger import *
+from utils import misc
+from utils.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
+from utils.logger import *
 import random
-
-from knn_cuda import KNN as _KNN
-from models.point_mae.extensions.chamfer_dist import ChamferDistanceL1, ChamferDistanceL2
-'''
-# --- KNN fallback that accepts either (B,N,3)/(B,G,3) or (B,3,N)/(B,3,G) ---
-try:
-    from knn_cuda import KNN as _KNN  # fast path
-    _HAS_KNN_CUDA = True
-except Exception:
-    _HAS_KNN_CUDA = False
-    print("[warn] knn_cuda not available — using torch.cdist KNN fallback (inference OK).")
-
-    class _KNN:
-        """
-        Drop-in replacement for knn_cuda.KNN(..., transpose_mode=True).
-        Accepts either:
-          - channel-last:  (B, N, 3) and (B, G, 3)
-          - channel-first: (B, 3, N) and (B, 3, G)
-        Returns (dists, indices) with shape (B, N, k) on the query (first) set.
-        """
-        def __init__(self, k=16, transpose_mode=True):
-            self.k = k
-            self.transpose_mode = transpose_mode
-
-        @staticmethod
-        def _to_channel_last(t):
-            # (B, N, 3) -> keep; (B, 3, N) -> transpose to (B, N, 3)
-            if t.dim() != 3:
-                raise ValueError(f"Expected 3D tensor, got {tuple(t.shape)}")
-            if t.size(-1) == 3:
-                return t
-            if t.size(1) == 3:
-                return t.transpose(1, 2)
-            raise ValueError(f"Cannot infer point layout from shape {tuple(t.shape)}")
-
-        def __call__(self, x, y):
-            """
-            x: query points, y: reference points
-            - x shape: (B, N, 3) or (B, 3, N)
-            - y shape: (B, G, 3) or (B, 3, G)
-            """
-            # Regardless of transpose_mode, make both channel-last for cdist
-            x = self._to_channel_last(x)  # (B, N, 3)
-            y = self._to_channel_last(y)  # (B, G, 3)
-
-            # Pairwise distances: (B, N, G)
-            d = torch.cdist(x, y)
-
-            # Take k nearest neighbors in the reference set for each query
-            vals, idx = torch.topk(d, k=self.k, dim=-1, largest=False, sorted=True)  # (B, N, k)
-            return vals, idx
+from knn_cuda import KNN
+from extensions.chamfer_dist import ChamferDistanceL1, ChamferDistanceL2
 
 
-# --- Chamfer: optional; only needed for training. Keep soft to avoid import crash during inference. ---
-try:
-    from extensions.chamfer_dist import ChamferDistanceL1, ChamferDistanceL2
-except Exception:
-    class ChamferDistanceL1(nn.Module):
-        def forward(self, *args, **kwargs):
-            raise RuntimeError("ChamferDistanceL1 extension not available (training only).")
-    class ChamferDistanceL2(nn.Module):
-        def forward(self, *args, **kwargs):
-            raise RuntimeError("ChamferDistanceL2 extension not available (training only).")
-'''
 class Encoder(nn.Module):   ## Embedding module
     def __init__(self, encoder_channel):
         super().__init__()
@@ -112,8 +52,7 @@ class Group(nn.Module):  # FPS + KNN
         super().__init__()
         self.num_group = num_group
         self.group_size = group_size
-        #self.knn = KNN(k=self.group_size, transpose_mode=True)
-        self.knn = _KNN(k=self.group_size, transpose_mode=True)
+        self.knn = KNN(k=self.group_size, transpose_mode=True)
 
     def forward(self, xyz):
         '''
