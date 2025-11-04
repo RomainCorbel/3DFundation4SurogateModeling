@@ -6,7 +6,7 @@ GraphSAGE:
   nb_hidden_layers: 3
   size_hidden_layers: 64
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   max_neighbors: 64
   bn_bool: True
@@ -19,7 +19,7 @@ PointNet:
 
   base_nb: 8
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   subsampling: 32000
 
@@ -30,7 +30,7 @@ MLP:
   nb_hidden_layers: 3
   size_hidden_layers: 64
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   bn_bool: True
   subsampling: 32000
@@ -49,7 +49,7 @@ GUNet:
   res: False
 
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   max_neighbors: 64
   subsampling: 32000
@@ -63,7 +63,7 @@ GraphSAGEGlobal:
   nb_hidden_layers: 3
   size_hidden_layers: 64
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   max_neighbors: 64
   bn_bool: True
@@ -81,7 +81,7 @@ PointNetGlobal:
 
   base_nb: 8
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   subsampling: 32000
 
@@ -97,11 +97,11 @@ MLPGlobal:
   size_hidden_layers: 64
   bn_bool: True
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   subsampling: 32000
   use_global_fusion: true
-  global_in: 384 # 1024 
+  global_in: 384 # 39824 
   global_fuse: 8
   
 GUNetGlobal:
@@ -118,7 +118,7 @@ GUNetGlobal:
   res: False
 
   batch_size: 1
-  nb_epochs: 10
+  nb_epochs: 398
   lr: 0.001
   max_neighbors: 64
   subsampling: 32000

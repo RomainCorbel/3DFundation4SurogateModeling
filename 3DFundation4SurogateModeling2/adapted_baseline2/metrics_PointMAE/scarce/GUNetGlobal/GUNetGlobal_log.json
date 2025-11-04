@@ -2,7 +2,7 @@
   "task": "pressure_surface_only",
   "loss": "MSE",
   "nb_parameters": 68721.0,
-  "time_elapsed": 53.064759731292725,
+  "time_elapsed": 1680.6633970737457,
   "hparams": {
     "encoder": [
       7,
@@ -36,7 +36,7 @@
     "batchnorm": true,
     "res": false,
     "batch_size": 1,
-    "nb_epochs": 10,
+    "nb_epochs": 398,
     "lr": 0.001,
     "max_neighbors": 64,
     "subsampling": 32000,
@@ -45,6 +45,6 @@
     "global_in": 384,
     "global_fuse": 8
   },
-  "train_loss": 0.03143462538719177,
-  "val_loss": 0.04212333829724231
+  "train_loss": 0.0011177350534126163,
+  "val_loss": 0.023097336004429963
 }
