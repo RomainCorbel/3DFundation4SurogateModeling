@@ -12,10 +12,10 @@ def run_training_pipeline(
     model: str,
     task: str,
     dataset_save_dir: str,
-    features_dir: str,
     scores_dir: str,
     metrics_dir: str,
     param: str,
+    features_dir: str | None = None,
 ):
     """
     Minimal refactor of the original script into a function with only these parameters:
@@ -38,6 +38,12 @@ def run_training_pipeline(
     nmodel = 1          # was: --nmodel (default 1)
     weight = 1.0        # was: --weight (default 1)
     # score flag removed; we now always compute scores because scores_dir is provided
+    
+    if args_model.endswith("Global") and not features_dir:
+        raise ValueError(
+            f"Model '{args_model}' requires global features, but no features_dir was provided.\n"
+            "Please specify the directory containing the global feature parquet files."
+        )
 
     # ---------- Manifest & dataset splits ----------
     with open('../Dataset/manifest.json', 'r') as f:
@@ -48,42 +54,13 @@ def run_training_pipeline(
     n = int(.1 * len(manifest_train))
     train_dataset = manifest_train[:-n]
     val_dataset = manifest_train[-n:]
-    ''' 
-    if os.path.exists(dataset_save_dir):
-        train_cache = osp.join(dataset_save_dir, 'train_dataset')
-        val_cache   = osp.join(dataset_save_dir, 'val_dataset')
-        test_cache  = osp.join(dataset_save_dir, 'test_dataset')
-        norm_cache  = osp.join(dataset_save_dir, 'normalization')
-        print("loading train_dataset, val_dataset and test_dataset")
-        train_dataset = torch.load(train_cache, map_location="cpu", weights_only=False)
-        val_dataset   = torch.load(val_cache,   map_location="cpu", weights_only=False)
-        test_dataset  = torch.load(test_cache,  map_location="cpu", weights_only=False)
-        coef_norm     = torch.load(norm_cache,  map_location="cpu", weights_only=False)
 
-    else:
-        train_cache = osp.join(dataset_save_dir, 'train_dataset')
-        val_cache   = osp.join(dataset_save_dir, 'val_dataset')
-        test_cache  = osp.join(dataset_save_dir, 'test_dataset')
-        norm_cache  = osp.join(dataset_save_dir, 'normalization')
-        print("Building train_dataset, val_dataset and test_dataset")
-        train_dataset, coef_norm = Dataset(train_dataset, norm = True, global_features_parquet = features_dir)
-        val_dataset = Dataset(val_dataset, coef_norm=coef_norm, global_features_parquet = features_dir)
-        test_dataset = Dataset(test_dataset, coef_norm=coef_norm, global_features_parquet = features_dir)
-        os.makedirs(dataset_save_dir, exist_ok=True)
-        torch.save(train_dataset, osp.join(dataset_save_dir, 'train_dataset'))
-        torch.save(coef_norm,     osp.join(dataset_save_dir, 'normalization'))
-        torch.save(val_dataset,  osp.join(dataset_save_dir, 'val_dataset'))
-        torch.save(test_dataset,  osp.join(dataset_save_dir, 'test_dataset'))
-        print(f"[SAVE] Train -> {osp.abspath(osp.join(dataset_save_dir,'train_dataset'))}")
-        print(f"[SAVE] Val   -> {osp.abspath(osp.join(dataset_save_dir,'val_dataset'))}")
-        print(f"[SAVE] Norm  -> {osp.abspath(osp.join(dataset_save_dir,'normalization'))}")
-        '''
     train_cache = osp.join(dataset_save_dir, "train_dataset")
     val_cache   = osp.join(dataset_save_dir, "val_dataset")
     test_cache  = osp.join(dataset_save_dir, "test_dataset")
     norm_cache  = osp.join(dataset_save_dir, "normalization")
 
-    # load if everything is present; otherwise build and save
+    # load if everything is present; otherwise build and save (the idea is that the dataset MUST contain g for global models, for normal models it will contain the extracted feature if feature_dir is given)
     if all(osp.exists(p) for p in [train_cache, val_cache, test_cache, norm_cache]):
         print("[CACHE] loading train_dataset, val_dataset, test_dataset, and normalization")
         train_dataset = torch.load(train_cache, map_location="cpu", weights_only=False)
@@ -92,21 +69,48 @@ def run_training_pipeline(
         coef_norm     = torch.load(norm_cache,  map_location="cpu", weights_only=False)
     else:
         print("[BUILD] Building train_dataset, val_dataset, test_dataset, and normalization")
-        # build train with normalization; reuse coef_norm for val/test
-        train_dataset, coef_norm = Dataset(train_dataset, norm=True,  global_features_parquet=features_dir)
-        val_dataset              = Dataset(val_dataset,   coef_norm=coef_norm, global_features_parquet=features_dir)
-        test_dataset             = Dataset(test_dataset,  coef_norm=coef_norm, global_features_parquet=features_dir)
 
+        # Determine whether to use global features
+        use_global = features_dir is not None
+
+        # Informative log
+        if use_global:
+            print(f"[INFO] Using global features from: {features_dir}")
+        else:
+            print("[INFO] Building dataset without global features (.g will be omitted)")
+
+        # Build datasets
+        train_dataset, coef_norm = Dataset(
+            train_dataset,
+            norm=True,
+            global_features_parquet=features_dir,
+            use_global_features=use_global,
+        )
+        val_dataset = Dataset(
+            val_dataset,
+            coef_norm=coef_norm,
+            global_features_parquet=features_dir,
+            use_global_features=use_global,
+        )
+        test_dataset = Dataset(
+            test_dataset,
+            coef_norm=coef_norm,
+            global_features_parquet=features_dir,
+            use_global_features=use_global,
+        )
+
+        # Save datasets
         os.makedirs(dataset_save_dir, exist_ok=True)
         torch.save(train_dataset, train_cache)
-        torch.save(val_dataset,   val_cache)
-        torch.save(test_dataset,  test_cache)
-        torch.save(coef_norm,     norm_cache)
+        torch.save(val_dataset, val_cache)
+        torch.save(test_dataset, test_cache)
+        torch.save(coef_norm, norm_cache)
 
         print(f"[SAVE] Train -> {osp.abspath(train_cache)}")
         print(f"[SAVE] Val   -> {osp.abspath(val_cache)}")
         print(f"[SAVE] Test  -> {osp.abspath(test_cache)}")
         print(f"[SAVE] Norm  -> {osp.abspath(norm_cache)}")
+
     # ---------- Device ----------
     use_cuda = torch.cuda.is_available()
     device = 'cuda:0' if use_cuda else 'cpu'
