@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 import torch
 from torch_geometric.data import Data
-from utils.dataset import Dataset
+from UTILS.dataset import Dataset
 
 import matplotlib
 
@@ -68,9 +68,9 @@ def tensor_to_numpy(t):
 def convert_to_shapenet_like(
     npoints: int = 100,
     path_in: str = DEFAULT_PATH_IN,
-    root_out: str = "shapenet_like_out",
-    category_name: str = "Airplane",
-    category_id: str = "0",
+    root_out: str = "shapenet_like_out2",
+    category_name: str = "Default",
+    category_id: str = "00000000",
     manifest_keys = ["full_test","full_train"],
 ):
     """
@@ -170,3 +170,124 @@ def convert_to_shapenet_like(
     print(f"  Exemples (objets): {len(test_tokens)} | npoints/objet: {npoints}")
 
     return {"root_out": root_out_abs, "tokens": test_tokens}
+
+
+
+
+
+def transform_xy(xy: np.ndarray, mode: str = "raw") -> np.ndarray:
+    """
+    Applique une transformation 2D à un nuage de points xy (N,2).
+    """
+    if mode == "raw":
+        return xy
+
+    elif mode == "centered":
+        return xy - xy.mean(axis=0)
+
+    elif mode == "normalized":
+        return (xy - xy.mean(axis=0)) / (xy.std(axis=0) + 1e-8)
+
+    elif mode == "minmax":
+        mn = xy.min(axis=0)
+        mx = xy.max(axis=0)
+        return (xy - mn) / (mx - mn + 1e-8)
+
+    elif mode == "unitsphere":
+        r = np.max(np.linalg.norm(xy, axis=1))
+        return xy / (r + 1e-8)
+
+    else:
+        raise ValueError(f"Mode inconnu : '{mode}'")
+
+def create_extra_category_from_existing(
+    root_out: str,
+    from_category_id: str = "00000000",
+    new_category_id: str = "11111111",
+    new_category_name: str = "Normalized",
+    transform_mode: str = "normalized",
+):
+    """
+    Crée une nouvelle catégorie ShapeNet-like à partir d'une catégorie déjà existante,
+    en appliquant une transformation définie par transform_mode sur XY.
+    """
+    root_out = osp.abspath(root_out)
+
+    # Dossiers existants (source)
+    src_points = osp.join(root_out, from_category_id, "points")
+    src_labels = osp.join(root_out, from_category_id, "points_label")
+
+    if not osp.isdir(src_points):
+        raise FileNotFoundError(f"Catégorie source introuvable : {src_points}")
+
+    # Dossiers nouvelle catégorie
+    cat_dir     = ensure_dir(osp.join(root_out, new_category_id))
+    points_dir  = ensure_dir(osp.join(cat_dir, "points"))
+    labels_dir  = ensure_dir(osp.join(cat_dir, "points_label"))
+    segimg_dir  = ensure_dir(osp.join(cat_dir, "seg_img"))
+
+    print(f"\n=== Création catégorie {new_category_name} ({new_category_id}) ===")
+
+    # Liste des objets
+    tokens = sorted([f[:-4] for f in os.listdir(src_points) if f.endswith(".pts")])
+
+    new_tokens = []
+
+    for token in tqdm(tokens, desc=f"Transforming {new_category_name}"):
+        # ---- lecture du .pts ----
+        xyz = np.loadtxt(osp.join(src_points, token + ".pts"))
+        xy = xyz[:, :2]
+
+        # ---- transformer XY ----
+        xy_new = transform_xy(xy, mode=transform_mode)
+
+        # ---- reconstruire XYZ ----
+        xyz_new = np.concatenate([xy_new, np.zeros((len(xy_new), 1))], axis=1)
+
+        # ---- labels ----
+        seg = np.loadtxt(osp.join(src_labels, token + ".seg")).astype(int)
+
+        # ---- sauver ----
+        save_pts_xyz(osp.join(points_dir, f"{token}.pts"), xyz_new)
+        save_seg_labels(osp.join(labels_dir, f"{token}.seg"), seg)
+        make_png_scatter(osp.join(segimg_dir, f"{token}.png"), xy_new)
+
+        new_tokens.append(f"{new_category_id}/{token}")
+
+    # Ajouter dans synsetoffset2category
+    with open(osp.join(root_out, "synsetoffset2category.txt"), "a") as f:
+        f.write(f"{new_category_name} {new_category_id}\n")
+
+    # ---------------------------
+    # 🎯 SOLUTION 1 : écrire toujours une LISTE plate
+    # ---------------------------
+
+    split_path = osp.join(root_out, "train_test_split", "shuffled_test_file_list.json")
+
+    # Charger ancien fichier
+    if osp.isfile(split_path):
+        with open(split_path, "r") as f:
+            loaded = json.load(f)
+    else:
+        loaded = []
+
+    # Convertir en liste plate SI dictionnaire
+    flat = []
+
+    if isinstance(loaded, dict):
+        # flatten dict values
+        for lst in loaded.values():
+            flat.extend(lst)
+    elif isinstance(loaded, list):
+        flat = loaded
+    else:
+        raise ValueError("Format JSON inattendu dans shuffled_test_file_list.json")
+
+    # Ajouter les nouveaux tokens
+    flat.extend(new_tokens)
+
+    # Réécrire proprement : une seule liste
+    with open(split_path, "w") as f:
+        json.dump(flat, f, indent=2)
+
+    print(f"[OK] Ajouté {len(new_tokens)} tokens dans test split.")
