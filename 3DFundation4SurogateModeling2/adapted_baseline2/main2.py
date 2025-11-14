@@ -190,7 +190,7 @@ def run_training_pipeline(
 
     # Save into structured folder: scores/<task>/<model>
     score_dir = os.path.join(scores_dir, args_task, args_model)
-    os.makedirs(score_dir, exist_ok=True)
+    os.makedirs(score_dir, exist_ok=True) # ATTENTION, ici on ne denormalize pas les prediction, il faudrait faire pred = pred * std_out + mean_out 
     np.save(osp.join(score_dir, 'true_coefs'), true_coefs)
     np.save(osp.join(score_dir, 'pred_coefs_mean'), pred_mean)
     np.save(osp.join(score_dir, 'pred_coefs_std'), pred_std)

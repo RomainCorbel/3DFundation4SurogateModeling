@@ -190,7 +190,7 @@ def analyze_pointnet_backbone2(
         for pts, labels in test_dataloader:  # pts: (B,N,3)
             x = pts.transpose(2, 1).to(DEVICE)  # -> (B,3,N)
             gfeat, crit_idxs, _ = classifier.backbone(x)  # gfeat: (B,1024) usually
-            gfeat = torch.nn.functional.normalize(gfeat, p=2, dim=1)  # optional L2
+            gfeat = torch.nn.functional.normalize(gfeat, p=2, dim=1)  
             all_feats.append(gfeat.cpu().numpy())
             all_labels.append(labels.squeeze(1).cpu().numpy())
 
@@ -199,10 +199,10 @@ def analyze_pointnet_backbone2(
     n_samples = X.shape[0]
     print(f"[{model_name}] Collected features: X={X.shape}, labels={y.shape}")
     
-    save_dir = osp.join(os.getcwd(), "extracted_features", model_name)
+    save_dir = osp.join(os.getcwd(), "extracted_features", f"{model_name}_{class_choice[0]}")
     os.makedirs(save_dir, exist_ok=True)
-    out_csv  = osp.join(save_dir, f"{model_name}_features.csv")
-    out_parq = osp.join(save_dir, f"{model_name}_features.parquet")
+    out_csv  = osp.join(save_dir, f"{model_name}_{class_choice[0]}_features.csv")
+    out_parq = osp.join(save_dir, f"{model_name}_{class_choice[0]}_features.parquet")
 
     # Collect foil names from dataset (assumes DataLoader shuffle=False)
     if hasattr(test_dataset, "datapath"):

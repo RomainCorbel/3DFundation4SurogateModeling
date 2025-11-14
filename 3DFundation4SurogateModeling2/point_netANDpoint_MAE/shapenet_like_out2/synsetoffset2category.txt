@@ -1,2 +1,2 @@
 Default 00000000
-Normalized 11111111
+normalized 11111111

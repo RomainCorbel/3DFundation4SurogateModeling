@@ -182,7 +182,7 @@ def transform_xy(xy: np.ndarray, mode: str = "raw") -> np.ndarray:
     if mode == "raw":
         return xy
 
-    elif mode == "centered":
+    elif mode == "centered": #shapenet dataset is in the middle
         return xy - xy.mean(axis=0)
 
     elif mode == "normalized":
@@ -199,7 +199,6 @@ def transform_xy(xy: np.ndarray, mode: str = "raw") -> np.ndarray:
 
     else:
         raise ValueError(f"Mode inconnu : '{mode}'")
-
 def create_extra_category_from_existing(
     root_out: str,
     from_category_id: str = "00000000",

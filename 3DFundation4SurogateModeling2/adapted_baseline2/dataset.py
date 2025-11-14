@@ -116,7 +116,7 @@ def _load_global_parquet(parquet_path: str) -> dict[str, np.ndarray]:
 # ---------------------------------------------------------------------
 # --- Main dataset builder
 # ---------------------------------------------------------------------
-
+'''
 def Dataset(
     set,
     *,
@@ -227,3 +227,136 @@ def Dataset(
             data.x = (data.x - mi) / (si + 1e-8)
             data.y = (data.y - mo) / (so + 1e-8)
     return dataset
+'''
+def Dataset(
+    set,
+    *,
+    norm: bool = False,
+    coef_norm=None,
+    sample='uniform',
+    surf_ratio=1,
+    n_surface_points: int = 1000,
+    global_features_parquet: str | None = "../point_net/extracted_features/cls_model_15/cls_model_15_features.parquet",
+    use_global_features: bool = True,
+):
+    """
+    Builds list of torch_geometric Data objects for training / eval.
+
+    Returns:
+      - (dataset, coef_norm) if norm=True and coef_norm is None  (first call)
+      - dataset              if coef_norm is provided or norm=False
+
+    coef_norm has 6 elements:
+      (mean_x, std_x, mean_y, std_y, mean_g or None, std_g or None)
+
+    g is a [1024] global feature vector per foil (optional).
+    """
+    # -----------------------------
+    # Decide what we do this call
+    # -----------------------------
+    compute_norm = (norm and coef_norm is None)
+
+    # -----------------------------
+    # Load global features (optional)
+    # -----------------------------
+    G = None
+    if use_global_features:
+        if not osp.exists(global_features_parquet):
+            raise FileNotFoundError(global_features_parquet)
+        G = _load_global_parquet(global_features_parquet)  # dict: foil_id -> (1024,)
+
+    dataset = []
+
+    # Lists for computing normalization when needed
+    xs, ys = [], []
+    gs = []   # one g per foil
+
+    # -----------------------------
+    # FIRST PASS — build Data list
+    # -----------------------------
+    for s in tqdm(set):
+        internal = pv.read(osp.join('..', 'Dataset', s, f"{s}_internal.vtu"))
+        aerofoil = pv.read(osp.join('..', 'Dataset', s, f"{s}_aerofoil.vtp"))
+
+        pos, x, y, surf = _compute_surface_io(aerofoil, internal, s, n_surface_points)
+        data = Data(pos=pos, x=x, y=y, surf=surf)
+
+        # Attach global features if available
+        if G is not None:
+            key = s.strip()
+            if key in G:
+                g_np = np.asarray(G[key], dtype=np.float32)  # (1024,)
+                data.g = torch.tensor(g_np)
+                if compute_norm:
+                    gs.append(g_np)
+            else:
+                data.g = None
+        else:
+            data.g = None
+
+        # Collect x,y for normalization on first call
+        if compute_norm:
+            xs.append(x.numpy())
+            ys.append(y.numpy())
+
+        dataset.append(data)
+
+    # --------------------------------------------------
+    # Case 1: no norm and no coef_norm → return raw data
+    # --------------------------------------------------
+    if not norm and coef_norm is None:
+        return dataset
+
+    # ==================================================
+    # COMPUTE NORMALIZATION COEFS (first call only)
+    # ==================================================
+    if compute_norm:
+        X = np.vstack(xs)  # [sum_points, 7]
+        Y = np.vstack(ys)  # [sum_points, 1]
+
+        mean_x = X.mean(axis=0).astype(np.float32)
+        std_x  = X.std(axis=0).astype(np.float32)
+
+        mean_y = Y.mean(axis=0).astype(np.float32)
+        std_y  = Y.std(axis=0).astype(np.float32)
+
+        if len(gs) > 0:
+            Gmat = np.vstack(gs)  # [num_foils, 1024]
+            mean_g = Gmat.mean(axis=0).astype(np.float32)
+            std_g  = Gmat.std(axis=0).astype(np.float32)
+        else:
+            mean_g = None
+            std_g  = None
+
+        coef_norm = (mean_x, std_x, mean_y, std_y, mean_g, std_g)
+
+    # At this point, if we reach here, we must have coef_norm
+    mean_x, std_x, mean_y, std_y, mean_g, std_g = coef_norm
+
+    mean_x = torch.tensor(mean_x)
+    std_x  = torch.tensor(std_x)
+    mean_y = torch.tensor(mean_y)
+    std_y  = torch.tensor(std_y)
+
+    mean_g = torch.tensor(mean_g) if mean_g is not None else None
+    std_g  = torch.tensor(std_g) if std_g is not None else None
+
+    # ==================================================
+    # APPLY NORMALIZATION (train / val / test)
+    # ==================================================
+    for data in dataset:
+        data.x = (data.x - mean_x) / (std_x + 1e-8)
+        data.y = (data.y - mean_y) / (std_y + 1e-8)
+
+        if data.g is not None and mean_g is not None:
+            data.g = (data.g - mean_g) / (std_g + 1e-8)
+
+    # ==================================================
+    # RETURN FORMAT
+    # ==================================================
+    if compute_norm:
+        # first call: training set
+        return dataset, coef_norm
+    else:
+        # val / test: coef_norm was given
+        return dataset
