@@ -1,2 +1,4 @@
 Default 00000000
 normalized 11111111
+centered 22222222
+normalized 11111111

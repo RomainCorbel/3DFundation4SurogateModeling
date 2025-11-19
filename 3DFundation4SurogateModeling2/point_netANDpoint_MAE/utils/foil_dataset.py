@@ -69,7 +69,7 @@ def convert_to_shapenet_like(
     npoints: int = 100,
     path_in: str = DEFAULT_PATH_IN,
     root_out: str = "shapenet_like_out2",
-    category_name: str = "Default",
+    category_name: str = "default",
     category_id: str = "00000000",
     manifest_keys = ["full_test","full_train"],
 ):
@@ -199,6 +199,7 @@ def transform_xy(xy: np.ndarray, mode: str = "raw") -> np.ndarray:
 
     else:
         raise ValueError(f"Mode inconnu : '{mode}'")
+
 def create_extra_category_from_existing(
     root_out: str,
     from_category_id: str = "00000000",
@@ -290,3 +291,91 @@ def create_extra_category_from_existing(
         json.dump(flat, f, indent=2)
 
     print(f"[OK] Ajouté {len(new_tokens)} tokens dans test split.")
+
+
+def extrude_xy(xy: np.ndarray, thickness: float = 1.0, k: int = 3) -> np.ndarray:
+    """
+    Extrude a 2D airfoil into 3D by duplicating XY along the Z axis.
+    thickness=1.0 → z ∈ [-0.5, +0.5]
+    k : number of layers
+    """
+    half = thickness / 2
+    zs = np.linspace(-half, half, k)
+
+    return np.vstack([np.c_[xy, np.full(len(xy), z)] for z in zs])
+
+def create_extra_category_extruded(
+    root_out: str,
+    from_category_id: str = "00000000",
+    new_category_id: str = "11111111",
+    new_category_name: str = "Extruded",
+    thickness: float = 1.0,
+    k_layers: int = 3,
+):
+    """
+    Create a new extruded 3D category from an existing 2D category.
+    Airfoil remains unchanged in XY but gets duplicated along Z.
+    """
+    root_out = osp.abspath(root_out)
+
+    # Source folders
+    src_points = osp.join(root_out, from_category_id, "points")
+    src_labels = osp.join(root_out, from_category_id, "points_label")
+
+    if not osp.isdir(src_points):
+        raise FileNotFoundError(f"Catégorie source introuvable : {src_points}")
+
+    # New folders
+    cat_dir     = ensure_dir(osp.join(root_out, new_category_id))
+    points_dir  = ensure_dir(osp.join(cat_dir, "points"))
+    labels_dir  = ensure_dir(osp.join(cat_dir, "points_label"))
+    segimg_dir  = ensure_dir(osp.join(cat_dir, "seg_img"))
+
+    print(f"\n=== Création catégorie extrudée {new_category_name} ({new_category_id}) ===")
+
+    # List of objects
+    tokens = sorted([f[:-4] for f in os.listdir(src_points) if f.endswith(".pts")])
+    new_tokens = []
+
+    for token in tqdm(tokens, desc=f"Extruding {new_category_name}"):
+
+        # Load XY
+        xyz = np.loadtxt(osp.join(src_points, token + ".pts"))
+        xy  = xyz[:, :2]
+
+        # Extrude ONLY
+        xyz_new = extrude_xy(xy, thickness=thickness, k=k_layers)
+
+        # Duplicate segmentation labels
+        seg = np.loadtxt(osp.join(src_labels, token + ".seg")).astype(int)
+        seg = np.repeat(seg, k_layers)
+
+        # Save new files
+        save_pts_xyz(osp.join(points_dir, f"{token}.pts"), xyz_new)
+        save_seg_labels(osp.join(labels_dir, f"{token}.seg"), seg)
+
+        # Still generate 2D scatter plot (XY view)
+        make_png_scatter(osp.join(segimg_dir, f"{token}.png"), xy)
+
+        new_tokens.append(f"{new_category_id}/{token}")
+
+    # Append to mapping
+    with open(osp.join(root_out, "synsetoffset2category.txt"), "a") as f:
+        f.write(f"{new_category_name} {new_category_id}\n")
+
+    # Update test split
+    split_path = osp.join(root_out, "train_test_split", "shuffled_test_file_list.json")
+
+    if osp.isfile(split_path):
+        with open(split_path, "r") as f:
+            loaded = json.load(f)
+    else:
+        loaded = []
+
+    flat = loaded if isinstance(loaded, list) else sum(loaded.values(), [])
+    flat.extend(new_tokens)
+
+    with open(split_path, "w") as f:
+        json.dump(flat, f, indent=2)
+
+    print(f"[OK] Ajouté {len(new_tokens)} objets extrudés au test split.")

@@ -119,66 +119,66 @@ def plot_extracted_features_tsne(
     plt.tight_layout()
     _maybe_save(f"{model_name}_tsne_embeddings.png", f"{model_name}_tsne_embeddings.npy", X2)
     plt.show()
+# 
+#     # ----------------- 2) DBSCAN on t-SNE -----------------
+#     db = DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean').fit(X2)
+#     cids = db.labels_
+#     uniq = sorted(set(cids) - {-1})
+#     k = len(uniq)
+#     n_noise = int((cids == -1).sum())
+#     print(f"[{model_name}] DBSCAN: clusters={k}, noise={n_noise} (eps={eps}, min_samples={min_samples})")
 
-    # ----------------- 2) DBSCAN on t-SNE -----------------
-    db = DBSCAN(eps=eps, min_samples=min_samples, metric='euclidean').fit(X2)
-    cids = db.labels_
-    uniq = sorted(set(cids) - {-1})
-    k = len(uniq)
-    n_noise = int((cids == -1).sum())
-    print(f"[{model_name}] DBSCAN: clusters={k}, noise={n_noise} (eps={eps}, min_samples={min_samples})")
+#     base_cmap = plt.cm.get_cmap(cluster_cmap_name, max(k, 1))
+#     cluster_colors = np.array([base_cmap(i) for i in range(max(k, 1))])
+#     cid_to_idx = {cid: i for i, cid in enumerate(uniq)}
+#     color_idx = np.array([cid_to_idx.get(cid, -1) for cid in cids])
 
-    base_cmap = plt.cm.get_cmap(cluster_cmap_name, max(k, 1))
-    cluster_colors = np.array([base_cmap(i) for i in range(max(k, 1))])
-    cid_to_idx = {cid: i for i, cid in enumerate(uniq)}
-    color_idx = np.array([cid_to_idx.get(cid, -1) for cid in cids])
+#     colors = np.empty((len(cids), 4), dtype=float)
+#     colors[color_idx >= 0] = cluster_colors[color_idx[color_idx >= 0]]
+#     colors[color_idx < 0]  = (0.7, 0.7, 0.7, 0.6)
 
-    colors = np.empty((len(cids), 4), dtype=float)
-    colors[color_idx >= 0] = cluster_colors[color_idx[color_idx >= 0]]
-    colors[color_idx < 0]  = (0.7, 0.7, 0.7, 0.6)
+#     plt.figure(figsize=(8, 6))
+#     plt.scatter(X2[:, 0], X2[:, 1], s=7, c=colors, edgecolors='none')
+#     legend_handles = [plt.Line2D([], [], marker='o', linestyle='', color=cluster_colors[i], label=f"Cluster {cid}")
+#                       for i, cid in enumerate(uniq)]
+#     if -1 in set(cids):
+#         legend_handles.append(plt.Line2D([], [], marker='o', linestyle='', color=(0.7,0.7,0.7,0.9), label="Noise (-1)"))
+#     plt.legend(handles=legend_handles, bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8, title='DBSCAN clusters')
+#     plt.title(f'Backbone features (t-SNE by DBSCAN clusters) — {model_name}\n'
+#               f'{k} clusters, {n_noise} noise • eps={eps}, min_samples={min_samples}')
+#     plt.tight_layout()
+#     _maybe_save(f"{model_name}_tsne_dbscan.png", None, None)
+#     plt.show()
 
-    plt.figure(figsize=(8, 6))
-    plt.scatter(X2[:, 0], X2[:, 1], s=7, c=colors, edgecolors='none')
-    legend_handles = [plt.Line2D([], [], marker='o', linestyle='', color=cluster_colors[i], label=f"Cluster {cid}")
-                      for i, cid in enumerate(uniq)]
-    if -1 in set(cids):
-        legend_handles.append(plt.Line2D([], [], marker='o', linestyle='', color=(0.7,0.7,0.7,0.9), label="Noise (-1)"))
-    plt.legend(handles=legend_handles, bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8, title='DBSCAN clusters')
-    plt.title(f'Backbone features (t-SNE by DBSCAN clusters) — {model_name}\n'
-              f'{k} clusters, {n_noise} noise • eps={eps}, min_samples={min_samples}')
-    plt.tight_layout()
-    _maybe_save(f"{model_name}_tsne_dbscan.png", None, None)
-    plt.show()
+#     # ----------------- 3) Cluster galleries -----------------
+#     def _plot_gallery(indices, title, ncols=5):
+#         nrows = 2
+#         fig, axes = plt.subplots(nrows, ncols, figsize=(2.6 * ncols, 2.6 * nrows))
+#         axes = axes.ravel()
+#         for ax, i in zip(axes, indices):
+#             pts, lbl = dataset[int(i)]
+#             pts = np.asarray(pts)
+#             xy = pts[:, :2] if pts.ndim == 2 and pts.shape[1] >= 2 else pts
+#             ax.scatter(xy[:, 0], xy[:, 1], s=1)
+#             ax.set_aspect('equal', 'box')
+#             ax.set_xticks([]); ax.set_yticks([])
+#             lbl_int = int(lbl) if np.ndim(lbl) == 0 or (hasattr(lbl, "shape") and getattr(lbl, "shape", ()) == ()) else int(np.array(lbl).squeeze())
+#             ax.set_title(f"idx {int(i)} | cls {lbl_int}", fontsize=8)
+#         for ax in axes[len(indices):]:
+#             ax.axis('off')
+#         fig.suptitle(f"{title} — {model_name}", y=0.98)
+#         plt.tight_layout()
+#         plt.show()
 
-    # ----------------- 3) Cluster galleries -----------------
-    def _plot_gallery(indices, title, ncols=5):
-        nrows = 2
-        fig, axes = plt.subplots(nrows, ncols, figsize=(2.6 * ncols, 2.6 * nrows))
-        axes = axes.ravel()
-        for ax, i in zip(axes, indices):
-            pts, lbl = dataset[int(i)]
-            pts = np.asarray(pts)
-            xy = pts[:, :2] if pts.ndim == 2 and pts.shape[1] >= 2 else pts
-            ax.scatter(xy[:, 0], xy[:, 1], s=1)
-            ax.set_aspect('equal', 'box')
-            ax.set_xticks([]); ax.set_yticks([])
-            lbl_int = int(lbl) if np.ndim(lbl) == 0 or (hasattr(lbl, "shape") and getattr(lbl, "shape", ()) == ()) else int(np.array(lbl).squeeze())
-            ax.set_title(f"idx {int(i)} | cls {lbl_int}", fontsize=8)
-        for ax in axes[len(indices):]:
-            ax.axis('off')
-        fig.suptitle(f"{title} — {model_name}", y=0.98)
-        plt.tight_layout()
-        plt.show()
-
-    for cid in np.unique(cids):
-        if cid == -1:
-            continue
-        idxs = np.where(cids == cid)[0]
-        kshow = min(gallery_per_cluster, len(idxs), 10)
-        if kshow <= 0:
-            continue
-        chosen = rng.choice(idxs, kshow, replace=False)
-        _plot_gallery(chosen, f"Cluster {cid} — {len(idxs)} samples")
+#     for cid in np.unique(cids):
+#         if cid == -1:
+#             continue
+#         idxs = np.where(cids == cid)[0]
+#         kshow = min(gallery_per_cluster, len(idxs), 10)
+#         if kshow <= 0:
+#             continue
+#         chosen = rng.choice(idxs, kshow, replace=False)
+#         _plot_gallery(chosen, f"Cluster {cid} — {len(idxs)} samples")
 
     # ----------------- 4) Area-colored t-SNE -----------------
     areas = []
@@ -262,5 +262,6 @@ def plot_extracted_features_tsne(
         _maybe_save(f"{model_name}_tsne_thickness.png", None, None)
         plt.show()
 
-    return {"X2": X2, "cluster_ids": cids}
+    # return {"X2": X2, "cluster_ids": cids}
+    return {"X2": X2}
 # ========================== end common_plots.py ==========================
