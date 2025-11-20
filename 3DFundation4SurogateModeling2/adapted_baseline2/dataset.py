@@ -311,11 +311,11 @@ def Dataset(
     # COMPUTE NORMALIZATION COEFS (first call only)
     # ==================================================
     if compute_norm:
-        X = np.vstack(xs)  # [sum_points, 7]
-        Y = np.vstack(ys)  # [sum_points, 1]
+        X = np.vstack(xs)  # [Number of foils * number of points per foil, 7]
+        Y = np.vstack(ys)  # [Number of foils * number of points per foil, 1]
 
-        mean_x = X.mean(axis=0).astype(np.float32)
-        std_x  = X.std(axis=0).astype(np.float32)
+        mean_x = X.mean(axis=0).astype(np.float32) # axis = 0: compute statistics column-by-column
+        std_x  = X.std(axis=0).astype(np.float32) 
 
         mean_y = Y.mean(axis=0).astype(np.float32)
         std_y  = Y.std(axis=0).astype(np.float32)
