@@ -22,7 +22,7 @@ class GlobalFusion(nn.Module):
 
         # Local path
         self.local_proj = (
-            MLP([W_local, W_fuse], batch_norm=bn_local)
+            MLP([W_local, W_fuse], batch_norm=bn_local)       ####### we can try to add some layers because one branch as the same layers try 3 layers ==> add a 64 in between
             if use_local_proj else nn.Identity()
         )
 
@@ -32,10 +32,10 @@ class GlobalFusion(nn.Module):
         self.dropout = nn.Dropout(p=dropout) if dropout > 0 else nn.Identity()
 
         # --- KO gate: scalar α multiplying the global term ---
-        self.alpha = nn.Parameter(torch.tensor(0.0), requires_grad=False)
+        self.alpha = nn.Parameter(torch.tensor(0.0), requires_grad=True) # True to make it learnable during training
 
     def forward(self, local: torch.Tensor, g: torch.Tensor, batch: Optional[torch.Tensor] = None):
-        N, device = local.size(0), local.device
+        N, device = local.size(0), local.device   # CHECK THIS, ARE WE DOING THE RIGHT THING?
         P = local if isinstance(self.local_proj, nn.Identity) else self.local_proj(local)
 
         if g.dim() == 1:

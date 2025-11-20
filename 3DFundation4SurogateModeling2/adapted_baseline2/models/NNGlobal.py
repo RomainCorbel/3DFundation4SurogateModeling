@@ -38,10 +38,10 @@ class NNGlobal(nn.Module):
             #with torch.no_grad():
             #    self.fuse.alpha.fill_(0.0)
             # self.fuse.alpha.requires_grad_(False)
-            self.fuse.alpha.data.fill_(0.0)
+            # self.fuse.alpha.data.fill_(0.0)
 
     def forward(self, data):
-        z = self.encoder(data.x)                               # (N, dim_enc) — baseline
+        z = self.encoder(data.x)                               # (N, dim_enc) — baseline ## CHECK THIS CLAIM check shapes 
         if self.use_global_fusion and hasattr(data, 'g'):
             z = self.fuse(z, data.g, getattr(data, "batch", None))  # alpha=0 → no-op
         z = self.nn(z)                                         # (N, dim_enc) — baseline mid MLP

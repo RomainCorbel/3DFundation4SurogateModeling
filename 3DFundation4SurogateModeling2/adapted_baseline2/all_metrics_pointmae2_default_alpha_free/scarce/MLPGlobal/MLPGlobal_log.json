@@ -1,0 +1,32 @@
+{
+  "task": "pressure_surface_only",
+  "loss": "MSE",
+  "nb_parameters": 29034.0,
+  "time_elapsed": 4396.023377656937,
+  "hparams": {
+    "encoder": [
+      7,
+      64,
+      64,
+      8
+    ],
+    "decoder": [
+      8,
+      64,
+      64,
+      1
+    ],
+    "nb_hidden_layers": 3,
+    "size_hidden_layers": 64,
+    "bn_bool": true,
+    "batch_size": 1,
+    "nb_epochs": 800,
+    "lr": 0.001,
+    "subsampling": 32000,
+    "use_global_fusion": true,
+    "global_in": 1152,
+    "global_fuse": 8
+  },
+  "train_loss": 0.00030035042436793447,
+  "val_loss": 0.002155821456694866
+}
