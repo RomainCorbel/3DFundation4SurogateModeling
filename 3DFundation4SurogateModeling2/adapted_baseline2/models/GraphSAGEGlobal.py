@@ -20,18 +20,15 @@ class GraphSAGEGlobal(nn.Module):
         self.use_global_fusion = hparams.get('use_global_fusion', False)
         if self.use_global_fusion:
             self.fuse = GlobalFusion(
-                W_local     = self.dim_enc,               # fuse at 8
-                W_global_in = hparams.get('global_in', 1024),
+                W_global_in = hparams.get('global_in'),
                 W_fuse      = self.dim_enc,               # project g: 1024 -> 8
-                bn_local    = False,
-                dropout     = 0.0
             )
             # learn-from-zero: start at 0 but trainable
             # HARD KO by default: ensure alpha = 0 and frozen
             #with torch.no_grad():
             #    self.fuse.alpha.fill_(0.0)
             # self.fuse.alpha.requires_grad_(False)
-            self.fuse.alpha.data.fill_(0.0)
+            # self.fuse.alpha.data.fill_(0.0)
 
         # --- GraphSAGE stack expects dim_enc in, same as baseline ---
         self.in_layer = nng.SAGEConv(
@@ -61,7 +58,6 @@ class GraphSAGEGlobal(nn.Module):
         # Encoder output: (N, dim_enc) e.g., (N,8)
         z = self.encoder(data.x)
 
-        # Fusion at dim_enc; with alpha=0 this is a no-op (baseline)
         if self.use_global_fusion and hasattr(data, 'g'):
             z = self.fuse(z, data.g, getattr(data, "batch", None))  # (N, dim_enc)
 

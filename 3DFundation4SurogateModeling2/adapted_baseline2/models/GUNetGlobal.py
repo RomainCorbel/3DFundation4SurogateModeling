@@ -57,8 +57,7 @@ class GUNetGlobal(nn.Module):
         self.use_global_fusion = hparams.get('use_global_fusion', False)
         if self.use_global_fusion:
             self.fuse = GlobalFusion(
-                W_local     = self.dim_enc,                       # fuse at 8
-                W_global_in = hparams.get('global_in', 1024),
+                W_global_in = hparams.get('global_in'),
                 W_fuse      = self.dim_enc                        # 1024 -> 8
             )
             # learn-from-zero: start at 0 (trainable by default)
@@ -66,7 +65,7 @@ class GUNetGlobal(nn.Module):
             #with torch.no_grad():
             #    self.fuse.alpha.fill_(0.0)
             # self.fuse.alpha.requires_grad_(False)
-            self.fuse.alpha.data.fill_(0.0)
+            # self.fuse.alpha.data.fill_(0.0)
 
         # ---- Down path ----
         self.down_layers = nn.ModuleList()
