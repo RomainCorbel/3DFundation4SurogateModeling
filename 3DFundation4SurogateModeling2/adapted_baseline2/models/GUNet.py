@@ -18,14 +18,6 @@ def DownSample(id, x, edge_index, pos_x, pool, pool_ratio, r, max_neighbors):
 
     pos_x = pos_x[id_sampled]
     id.append(id_sampled)
-
-    # --- CPU ONLY pour torch_cluster.radius_graph ---
-    '''
-    pos_x_cpu = pos_x.detach().cpu()
-    edge_index_sampled = nng.radius_graph(
-        x=pos_x_cpu, r=r, loop=True, max_num_neighbors=max_neighbors
-    ).to(dev)  # remettre sur le device du modèle
-    '''
     
     edge_index_sampled = nng.radius_graph(x = pos_x.detach(), r = r, loop = True, max_num_neighbors = max_neighbors)
 
@@ -35,12 +27,6 @@ def DownSample(id, x, edge_index, pos_x, pool, pool_ratio, r, max_neighbors):
 def UpSample(x, pos_x_up, pos_x_down):
     cluster = nng.nearest(pos_x_up, pos_x_down)
     x_up = x[cluster]
-    '''
-    dev = x.device
-    # --- CPU ONLY pour torch_cluster.nearest ---
-    cluster = nng.nearest(pos_x_up.detach().cpu(), pos_x_down.detach().cpu()).to(dev)
-    x_up = x[cluster]
-    '''
     return x_up
 
 class GUNet(nn.Module):

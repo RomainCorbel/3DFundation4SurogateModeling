@@ -29,10 +29,6 @@ def UpSample(x, pos_x_up, pos_x_down):
     return x_up
 
 class GUNetGlobal(nn.Module):
-    """
-    Baseline GUNet with optional GlobalFusion AFTER encoder output (fuse at dim_enc).
-    With alpha=0 inside GlobalFusion, this is exactly the baseline.
-    """
     def __init__(self, hparams, encoder, decoder):
         super(GUNetGlobal, self).__init__()
 
@@ -44,7 +40,6 @@ class GUNetGlobal(nn.Module):
         self.size_hidden_layers = hparams['size_hidden_layers']
         self.size_hidden_layers_init = hparams['size_hidden_layers']
         self.max_neighbors = hparams['max_neighbors']
-        self.dim_enc = hparams['encoder'][-1]      # e.g., 8 (IMPORTANT)
         self.bn_bool = hparams['batchnorm']
         self.res = hparams['res']
         self.head = 2
@@ -52,23 +47,15 @@ class GUNetGlobal(nn.Module):
 
         self.encoder = encoder
         self.decoder = decoder
-
-        # ---- Global fusion AFTER encoder output (fuse at dim_enc) ----
-        self.use_global_fusion = hparams.get('use_global_fusion', False)
-        if self.use_global_fusion:
-            self.fuse = GlobalFusion(
+        
+        self.dim_enc = hparams['encoder'][-1] 
+        self.fuse = GlobalFusion(
                 W_global_in = hparams.get('global_in'),
-                W_fuse      = self.dim_enc                        # 1024 -> 8
+                W_fuse      = self.dim_enc 
             )
-            # learn-from-zero: start at 0 (trainable by default)
-            # HARD KO by default: ensure alpha = 0 and frozen
-            #with torch.no_grad():
-            #    self.fuse.alpha.fill_(0.0)
-            # self.fuse.alpha.requires_grad_(False)
-            # self.fuse.alpha.data.fill_(0.0)
-
-        # ---- Down path ----
+        
         self.down_layers = nn.ModuleList()
+
         if self.pool_type != 'random':
             self.pool = nn.ModuleList()
         else:
@@ -76,142 +63,163 @@ class GUNetGlobal(nn.Module):
 
         if self.layer == 'SAGE':
             self.down_layers.append(nng.SAGEConv(
-                in_channels=self.dim_enc, out_channels=self.size_hidden_layers
+                in_channels = self.dim_enc,
+                out_channels = self.size_hidden_layers
             ))
             bn_in = self.size_hidden_layers
 
         elif self.layer == 'GAT':
             self.down_layers.append(nng.GATConv(
-                in_channels=self.dim_enc, out_channels=self.size_hidden_layers,
-                heads=self.head, add_self_loops=False, concat=True
+                in_channels = self.dim_enc,
+                out_channels = self.size_hidden_layers,
+                heads = self.head,
+                add_self_loops = False,
+                concat = True
             ))
-            bn_in = self.head * self.size_hidden_layers
+            bn_in = self.head*self.size_hidden_layers
 
-        if self.bn_bool:
+        if self.bn_bool == True:
             self.bn = nn.ModuleList()
-            self.bn.append(nng.BatchNorm(in_channels=bn_in, track_running_stats=False))
+            self.bn.append(nng.BatchNorm(
+                in_channels = bn_in,
+                track_running_stats = False
+            ))
         else:
             self.bn = None
+
 
         for n in range(1, self.L):
             if self.pool_type != 'random':
                 self.pool.append(nng.TopKPooling(
-                    in_channels=self.size_hidden_layers,
-                    ratio=self.pool_ratio[n - 1],
-                    nonlinearity=torch.sigmoid
+                    in_channels = self.size_hidden_layers,
+                    ratio = self.pool_ratio[n - 1],
+                    nonlinearity = torch.sigmoid
                 ))
 
             if self.layer == 'SAGE':
                 self.down_layers.append(nng.SAGEConv(
-                    in_channels=self.size_hidden_layers,
-                    out_channels=2 * self.size_hidden_layers,
+                    in_channels = self.size_hidden_layers,
+                    out_channels = 2*self.size_hidden_layers,
                 ))
-                self.size_hidden_layers = 2 * self.size_hidden_layers
+                self.size_hidden_layers = 2*self.size_hidden_layers
                 bn_in = self.size_hidden_layers
 
             elif self.layer == 'GAT':
                 self.down_layers.append(nng.GATConv(
-                    in_channels=self.head * self.size_hidden_layers,
-                    out_channels=self.size_hidden_layers,
-                    heads=2, add_self_loops=False, concat=True
+                    in_channels = self.head*self.size_hidden_layers,
+                    out_channels = self.size_hidden_layers,
+                    heads = 2,
+                    add_self_loops = False,
+                    concat = True
                 ))
 
-            if self.bn_bool:
-                self.bn.append(nng.BatchNorm(in_channels=bn_in, track_running_stats=False))
+            if self.bn_bool == True:
+                self.bn.append(nng.BatchNorm(
+                    in_channels = bn_in,
+                    track_running_stats = False
+                ))
 
-        # ---- Up path ----
         self.up_layers = nn.ModuleList()
 
         if self.layer == 'SAGE':
             self.up_layers.append(nng.SAGEConv(
-                in_channels=3 * self.size_hidden_layers_init, out_channels=self.dim_enc
+                in_channels = 3*self.size_hidden_layers_init,
+                out_channels = self.dim_enc
             ))
-            self.size_hidden_layers_init = 2 * self.size_hidden_layers_init
+            self.size_hidden_layers_init = 2*self.size_hidden_layers_init
 
         elif self.layer == 'GAT':
             self.up_layers.append(nng.GATConv(
-                in_channels=2 * self.head * self.size_hidden_layers,
-                out_channels=self.dim_enc, heads=2, add_self_loops=False, concat=False
+                in_channels = 2*self.head*self.size_hidden_layers,
+                out_channels = self.dim_enc,
+                heads = 2,
+                add_self_loops = False,
+                concat = False
             ))
 
-        if self.bn_bool:
-            self.bn.append(nng.BatchNorm(in_channels=self.dim_enc, track_running_stats=False))
+        if self.bn_bool == True:
+                self.bn.append(nng.BatchNorm(
+                    in_channels = self.dim_enc,
+                    track_running_stats = False
+                ))
 
         for n in range(1, self.L - 1):
             if self.layer == 'SAGE':
                 self.up_layers.append(nng.SAGEConv(
-                    in_channels=3 * self.size_hidden_layers_init, out_channels=self.size_hidden_layers_init
+                    in_channels = 3*self.size_hidden_layers_init,
+                    out_channels = self.size_hidden_layers_init,
                 ))
                 bn_in = self.size_hidden_layers_init
-                self.size_hidden_layers_init = 2 * self.size_hidden_layers_init
+                self.size_hidden_layers_init = 2*self.size_hidden_layers_init                
 
             elif self.layer == 'GAT':
                 self.up_layers.append(nng.GATConv(
-                    in_channels=2 * self.head * self.size_hidden_layers,
-                    out_channels=self.size_hidden_layers, heads=2, add_self_loops=False, concat=True
+                    in_channels = 2*self.head*self.size_hidden_layers,
+                    out_channels = self.size_hidden_layers,
+                    heads = 2,
+                    add_self_loops = False,
+                    concat = True
                 ))
 
-            if self.bn_bool:
-                self.bn.append(nng.BatchNorm(in_channels=bn_in, track_running_stats=False))
+            if self.bn_bool == True:
+                self.bn.append(nng.BatchNorm(
+                    in_channels = bn_in,
+                    track_running_stats = False
+                ))
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
         id = []
         edge_index_list = [edge_index.clone()]
         pos_x_list = []
-
-        # 1) Encoder [N,7] -> [N, dim_enc]
         z = self.encoder(x)
-
-        # 2) Global fusion at dim_enc
-        if self.use_global_fusion and hasattr(data, 'g'):
-            batch = getattr(data, "batch", None)
-            z = self.fuse(z, data.g, batch)   # (N, dim_enc)
-
+        
+        z = self.fuse(z, data.g) 
+        
         if self.res:
             z_res = z.clone()
 
-        # 3) Down path
         z = self.down_layers[0](z, edge_index)
-        if self.bn_bool:
-            z = self.bn[0](z)
-        z = self.activation(z)
 
+        if self.bn_bool == True:
+            z = self.bn[0](z)
+
+        z = self.activation(z)
         z_list = [z.clone()]
         for n in range(self.L - 1):
             pos_x = x[:, :2] if n == 0 else pos_x[id[n - 1]]
             pos_x_list.append(pos_x.clone())
 
             if self.pool_type != 'random':
-                z, edge_index = DownSample(id, z, edge_index, pos_x, self.pool[n],
-                                           self.pool_ratio[n], self.list_r[n], self.max_neighbors)
+                z, edge_index = DownSample(id, z, edge_index, pos_x, self.pool[n], self.pool_ratio[n], self.list_r[n], self.max_neighbors)
             else:
-                z, edge_index = DownSample(id, z, edge_index, pos_x, None,
-                                           self.pool_ratio[n], self.list_r[n], self.max_neighbors)
+                z, edge_index = DownSample(id, z, edge_index, pos_x, None, self.pool_ratio[n], self.list_r[n], self.max_neighbors)
             edge_index_list.append(edge_index.clone())
 
             z = self.down_layers[n + 1](z, edge_index)
-            if self.bn_bool:
+
+            if self.bn_bool == True:
                 z = self.bn[n + 1](z)
+
             z = self.activation(z)
             z_list.append(z.clone())
-
         pos_x_list.append(pos_x[id[-1]].clone())
-
-        # 4) Up path
+        
         for n in range(self.L - 1, 0, -1):
             z = UpSample(z, pos_x_list[n - 1], pos_x_list[n])
-            z = torch.cat([z, z_list[n - 1]], dim=1)
+            z = torch.cat([z, z_list[n - 1]], dim = 1)
             z = self.up_layers[n - 1](z, edge_index_list[n - 1])
-            if self.bn_bool:
-                z = self.bn[self.L + n - 1](z)   # <-- assign back to z
+
+            if self.bn_bool == True:
+                z = self.bn[self.L + n - 1](z)
+
             z = self.activation(z) if n != 1 else z
 
-        del z_list, pos_x_list, edge_index_list
+        del(z_list, pos_x_list, edge_index_list)
 
         if self.res:
             z = z + z_res
 
-        # 5) Decoder to output
         z = self.decoder(z)
+
         return z

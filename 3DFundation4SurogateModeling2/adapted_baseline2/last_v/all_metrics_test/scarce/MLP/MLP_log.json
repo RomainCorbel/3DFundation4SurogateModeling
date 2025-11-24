@@ -1,0 +1,29 @@
+{
+  "task": "pressure_surface_only",
+  "loss": "MSE",
+  "nb_parameters": 19793.0,
+  "time_elapsed": 24.550020456314087,
+  "hparams": {
+    "encoder": [
+      7,
+      64,
+      64,
+      8
+    ],
+    "decoder": [
+      8,
+      64,
+      64,
+      1
+    ],
+    "nb_hidden_layers": 3,
+    "size_hidden_layers": 64,
+    "batch_size": 1,
+    "nb_epochs": 6,
+    "lr": 0.001,
+    "bn_bool": true,
+    "subsampling": 32000
+  },
+  "train_loss": 0.01702139899134636,
+  "val_loss": 0.09281933336751536
+}
