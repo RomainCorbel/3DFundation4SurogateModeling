@@ -78,7 +78,7 @@ def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Datas
                             r=hparams['r'],
                             loop=True,
                             max_num_neighbors=int(hparams['max_neighbors'])
-                        ).cpu()
+                        ).to(device)
                     test_dataset_sampled.append(data_sampled)
             
             test_loader = DataLoader(test_dataset_sampled, batch_size=1, shuffle=False)

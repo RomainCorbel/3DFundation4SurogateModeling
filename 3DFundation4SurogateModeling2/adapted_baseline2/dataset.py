@@ -236,7 +236,7 @@ def Dataset(
         data.x = (data.x - mean_x) / (std_x + 1e-8)
         data.y = (data.y - mean_y) / (std_y + 1e-8)
 
-        if data.g is not None and mean_g is not None:
+        if hasattr(data, "g") and data.g is not None and mean_g is not None:
             data.g = (data.g - mean_g) / (std_g + 1e-8)
 
     # ==================================================

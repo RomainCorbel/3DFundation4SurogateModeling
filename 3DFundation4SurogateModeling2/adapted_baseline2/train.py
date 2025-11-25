@@ -162,15 +162,7 @@ def main(device, train_dataset, val_dataset, Net, hparams, path,
                     r=hparams['r'],
                     loop=True,
                     max_num_neighbors=int(hparams['max_neighbors'])
-                ).cpu()
-                '''
-                data_sampled.edge_index = nng.radius_graph(
-                    x=data_sampled.pos,
-                    r=hparams['r'],
-                    loop=True,
-                    max_num_neighbors=int(hparams['max_neighbors'])
-                ).cpu()
-                '''
+                ).to(device)
             train_dataset_sampled.append(data_sampled)
 
         train_loader = DataLoader(
@@ -210,15 +202,8 @@ def main(device, train_dataset, val_dataset, Net, hparams, path,
                                 r=hparams['r'],
                                 loop=True,
                                 max_num_neighbors=int(hparams['max_neighbors'])
-                            ).cpu()
-                            '''
-                            data_sampled.edge_index = nng.radius_graph(
-                                x=data_sampled.pos,
-                                r=hparams['r'],
-                                loop=True,
-                                max_num_neighbors=int(hparams['max_neighbors'])
-                            ).cpu()
-                            '''
+                            ).to(device)
+
                         val_dataset_sampled.append(data_sampled)
 
                     val_loader = DataLoader(val_dataset_sampled, batch_size=1, shuffle=True)
