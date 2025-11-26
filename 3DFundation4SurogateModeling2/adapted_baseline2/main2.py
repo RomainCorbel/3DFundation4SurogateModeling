@@ -180,20 +180,31 @@ def run_training_pipeline(
     # save trained models
     torch.save(models, osp.join(log_path, args_model))
 
-    # ---------- Always compute and save scores ----------
     s = args_task + '_test' if args_task != 'scarce' else 'full_test'
-    true_coefs, pred_mean, pred_std = metrics2.Results_test(
-        device, [models], [hparams], coef_norm,
-        path_in='../Dataset', path_out=scores_dir,
-        n_test=3, criterion='MSE', s=s, test_dataset = test_dataset
+    true_norm, pred_norm, true_denorm, pred_denorm = metrics2.Results_test(
+            device,
+            models[0],   # the single trained model
+            hparams,
+            coef_norm,
+            path_in='../Dataset',
+            path_out=scores_dir,
+            s=s,
+            test_dataset=test_dataset
     )
 
     # Save into structured folder: scores/<task>/<model>
     score_dir = os.path.join(scores_dir, args_task, args_model)
-    os.makedirs(score_dir, exist_ok=True) # ATTENTION, ici on ne denormalize pas les prediction, il faudrait faire pred = pred * std_out + mean_out 
-    np.save(osp.join(score_dir, 'true_coefs'), true_coefs)
-    np.save(osp.join(score_dir, 'pred_coefs_mean'), pred_mean)
-    np.save(osp.join(score_dir, 'pred_coefs_std'), pred_std)
+    os.makedirs(score_dir, exist_ok=True) 
+
+    # --- Save normalized values (direct model input/output) ---
+    np.save(osp.join(score_dir, 'true_norm'), true_norm)
+    np.save(osp.join(score_dir, 'pred_norm'), pred_norm)
+
+    # --- Save de-normalized (physical pressure in original units) ---
+    np.save(osp.join(score_dir, 'true_denorm'), true_denorm)
+    np.save(osp.join(score_dir, 'pred_denorm'), pred_denorm)
+
+    # np.save(osp.join(score_dir, 'pred_coefs_std'), pred_std)
     print(f"Scores saved in: {score_dir}")
 
     return {

@@ -50,7 +50,7 @@ def _sample_surface_points(aerofoil, n_points):
 # ---------------------------------------------------------------------
 # --- Surface-level feature construction
 # ---------------------------------------------------------------------
-def _compute_surface_io(aerofoil, internal, case_name, n_points):
+def _compute_surface_io(aerofoil, case_name, n_points):
     """
     Builds surface-only inputs X [N,7] and targets y [N,1] for a foil case.
     X = [x, y, U∞_x, U∞_y, 0, n_x, n_y]
@@ -163,10 +163,9 @@ def Dataset(
     # FIRST PASS — build Data list
     # -----------------------------
     for s in tqdm(set):
-        internal = pv.read(osp.join('..', 'Dataset', s, f"{s}_internal.vtu"))
         aerofoil = pv.read(osp.join('..', 'Dataset', s, f"{s}_aerofoil.vtp"))
 
-        pos, x, y, surf = _compute_surface_io(aerofoil, internal, s, n_surface_points)
+        pos, x, y, surf = _compute_surface_io(aerofoil, s, n_surface_points)
         data = Data(pos=pos, x=x, y=y, surf=surf)
 
         # Attach global features if available

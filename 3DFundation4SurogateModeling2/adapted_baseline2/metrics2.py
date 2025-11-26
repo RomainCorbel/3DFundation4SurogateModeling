@@ -7,41 +7,9 @@ import torch_geometric.nn as nng
 import json
 from dataset import Dataset
 import os
-
+'''
 def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Dataset', path_out='scores', 
                  n_test=3, criterion='MSE', s='full_test', test_dataset=None):
-    """
-    Compute test results for surface-only pressure prediction models.
-    
-    Args:
-        device: torch device
-        models_list: list of trained models (or list of model lists)
-        hparams_list: list of hyperparameter dictionaries
-        coef_norm: normalization coefficients
-        path_in: input data path
-        path_out: output scores path
-        n_test: number of test samples to evaluate
-        criterion: loss criterion ('MSE' or 'MAE')
-        s: test dataset key
-    
-    Returns:
-        true_coefs: true pressure values
-        pred_mean: mean predicted pressure values  
-        pred_std: standard deviation of predictions
-    """
-    '''
-    # Load test dataset
-    with open(osp.join(path_in, 'manifest.json'), 'r') as f:
-        manifest = json.load(f)
-    test_files = manifest[s]
-    
-    
-    if os.path.exists('save_dataset/pointmae/test_dataset'):
-        print("loading test_dataset")
-        test_dataset = torch.load('save_dataset/pointmae/test_dataset', map_location="cpu", weights_only=False)
-    else:
-        print("Building test_dataset")
-        test_dataset = Dataset(test_files, coef_norm=coef_norm)'''
         
     # Initialize storage
     all_true = []
@@ -137,3 +105,70 @@ def Results_test(device, models_list, hparams_list, coef_norm, path_in='../Datas
         pred_std = np.array([])
     
     return true_coefs, pred_mean, pred_std
+'''
+def Results_test(device, model, hparams, coef_norm, path_in='../Dataset', path_out='scores',
+                 s='full_test', test_dataset=None):
+
+    # ------------------------------------------------------
+    # Build test dataset ONCE (no subsampling)
+    # ------------------------------------------------------
+    test_dataset_sampled = []
+
+    use_edges = ('r' in hparams and hparams['r'] is not None)
+
+    for data in test_dataset:
+        data_sampled = data.clone()
+
+        # Build edges once if needed
+        if use_edges:
+            data_sampled.edge_index = nng.radius_graph(
+                x=data_sampled.pos.to(device),
+                r=hparams['r'],
+                loop=True,
+                max_num_neighbors=int(hparams['max_neighbors'])
+            ).to(device)
+
+        test_dataset_sampled.append(data_sampled)
+
+    test_loader = DataLoader(test_dataset_sampled, batch_size=1, shuffle=False)
+
+    # ------------------------------------------------------
+    # Run inference
+    # ------------------------------------------------------
+    true_list = []
+    pred_list = []
+
+    model.eval()
+    with torch.no_grad():
+        for data in test_loader:
+            data = data.to(device)
+
+            pred = model(data)
+            y = data.y
+
+            if pred.dim() == 1:
+                pred = pred.unsqueeze(1)
+            if y.dim() == 1:
+                y = y.unsqueeze(1)
+
+            m_surf = data.surf
+            if m_surf.any():
+                pred_list.append(pred[m_surf].cpu().numpy())
+                true_list.append(y[m_surf].cpu().numpy())
+
+    true_norm = np.concatenate(true_list)
+    pred_norm = np.concatenate(pred_list)
+
+    # ----------------------
+    # De-normalization
+    # ----------------------
+    mean_x, std_x, mean_y, std_y, mean_g, std_g = coef_norm
+
+    # Ensure numpy arrays
+    mean_y = np.array(mean_y).reshape(1,)
+    std_y  = np.array(std_y).reshape(1,)
+
+    true_denorm = true_norm * std_y + mean_y
+    pred_denorm = pred_norm * std_y + mean_y
+
+    return true_norm, pred_norm, true_denorm, pred_denorm
